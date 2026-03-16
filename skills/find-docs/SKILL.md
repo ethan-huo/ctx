@@ -58,11 +58,17 @@ Results are cached for 1 hour at `~/.cache/docs7/`. Use `--no-cache` to force a 
 
 ### Navigating large documents
 
-Documents over 2000 lines are automatically truncated to the first 1000 lines. Use `--toc` and `-s` to navigate efficiently:
+Documents over 2000 lines are automatically truncated to the first 1000 lines, with a hint appended at the end of stdout. Use `--toc` and `-s` to navigate:
 
 ```bash
-# View the document outline with section numbers
+# View the document outline (section numbers + line counts)
 docs7 read <url> --toc
+# output:
+#   1        Getting Started  (68 lines)
+#     1.1      Installation   (12 lines)
+#     1.2      Quick Start    (25 lines)
+#   2        API Reference    (300 lines)
+#     2.1      Authentication (45 lines)
 
 # Read a specific section by number
 docs7 read <url> -s 1.2
@@ -70,14 +76,14 @@ docs7 read <url> -s 1.2
 # Read multiple sections
 docs7 read <url> -s "1,3.1,6.2"
 
-# Read a range of sections
+# Read a range of sections (by TOC position, inclusive)
 docs7 read <url> -s "1-3"
 
 # Mix ranges and singles
 docs7 read <url> -s "1-2,3.2-5.1,6.2"
 ```
 
-Section numbers come from the `--toc` output. Use `--toc` first to find the section you need, then `-s` to read it.
+Use `--toc` first to find section numbers and estimate size, then `-s` to read specific sections.
 
 ### Putting it together
 
