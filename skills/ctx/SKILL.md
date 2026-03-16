@@ -1,10 +1,9 @@
 ---
 name: ctx
 description: >-
-  Look up documentation for third-party libraries, frameworks, SDKs, APIs, CLI
-  tools, and cloud services — search a documentation index by library name and
-  query, then read full source documents (GitHub files, doc sites, JS-rendered
-  SPAs) with section-level navigation for large pages.
+  Search documentation for libraries, frameworks, SDKs, and APIs by name and query.
+  Read any URL or local file as clean markdown (GitHub, doc sites, JS-rendered SPAs).
+  Navigate large documents with TOC outline and section extraction.
 ---
 
 # ctx — Library Documentation Finder
