@@ -1,25 +1,10 @@
 ---
 name: find-docs
 description: >-
-  Retrieves authoritative, up-to-date technical documentation, API references,
-  configuration details, and code examples for any developer technology.
-
-  Use this skill whenever answering technical questions or writing code that
-  interacts with external technologies. This includes libraries, frameworks,
-  programming languages, SDKs, APIs, CLI tools, cloud services, infrastructure
-  tools, and developer platforms.
-
-  Common scenarios:
-  - looking up API endpoints, classes, functions, or method parameters
-  - checking configuration options or CLI commands
-  - answering "how do I" technical questions
-  - generating code that uses a specific library or service
-  - debugging issues related to frameworks, SDKs, or APIs
-  - retrieving setup instructions, examples, or migration guides
-  - verifying version-specific behavior or breaking changes
-
-  Prefer this skill whenever documentation accuracy matters or when model
-  knowledge may be outdated.
+  Look up documentation for third-party libraries, frameworks, SDKs, APIs, CLI
+  tools, and cloud services — search a documentation index by library name and
+  query, then read full source documents (GitHub files, doc sites, JS-rendered
+  SPAs) with section-level navigation for large pages.
 ---
 
 # docs7 — Library Documentation Finder
@@ -67,6 +52,32 @@ The `read` command auto-detects the URL type:
 | `https://github.com/.../blob/...` | GitHub API (auto-converted) |
 | `https://...` (serves markdown) | Direct fetch with `Accept: text/markdown` |
 | `https://...` (serves HTML) | Jina Reader fallback → clean markdown |
+| `https://...` (JS/SPA page) | `docs7 read -f <url>` → Cloudflare Browser Rendering (full JS rendering) |
+
+Results are cached for 1 hour at `~/.cache/docs7/`. Use `--no-cache` to force a fresh fetch.
+
+### Navigating large documents
+
+Documents over 2000 lines are automatically truncated to the first 1000 lines. Use `--toc` and `-s` to navigate efficiently:
+
+```bash
+# View the document outline with section numbers
+docs7 read <url> --toc
+
+# Read a specific section by number
+docs7 read <url> -s 1.2
+
+# Read multiple sections
+docs7 read <url> -s "1,3.1,6.2"
+
+# Read a range of sections
+docs7 read <url> -s "1-3"
+
+# Mix ranges and singles
+docs7 read <url> -s "1-2,3.2-5.1,6.2"
+```
+
+Section numbers come from the `--toc` output. Use `--toc` first to find the section you need, then `-s` to read it.
 
 ### Putting it together
 
