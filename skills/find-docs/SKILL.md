@@ -46,13 +46,13 @@ docs7 read <url>
 
 The `read` command auto-detects the URL type:
 
-| URL pattern | Strategy |
-|---|---|
-| `github://owner/repo/path` | GitHub API (authenticated via `gh auth`) |
-| `https://github.com/.../blob/...` | GitHub API (auto-converted) |
-| `https://...` (serves markdown) | Direct fetch with `Accept: text/markdown` |
-| `https://...` (serves HTML) | Jina Reader fallback → clean markdown |
-| `https://...` (JS/SPA page) | `docs7 read -f <url>` → Cloudflare Browser Rendering (full JS rendering) |
+| URL pattern                       | Strategy                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `github://owner/repo/path`        | GitHub API (authenticated via `gh auth`)                                 |
+| `https://github.com/.../blob/...` | GitHub API (auto-converted)                                              |
+| `https://...` (serves markdown)   | Direct fetch with `Accept: text/markdown`                                |
+| `https://...` (serves HTML)       | Jina Reader fallback → clean markdown                                    |
+| `https://...` (JS/SPA page)       | `docs7 read -f <url>` → Cloudflare Browser Rendering (full JS rendering) |
 
 Results are cached for 1 hour at `~/.cache/docs7/`. Use `--no-cache` to force a fresh fetch.
 
@@ -104,12 +104,12 @@ docs7 read github://facebook/react/docs/hooks-reference.md
 
 The query directly affects result quality. Be specific.
 
-| Quality | Example |
-|---|---|
-| Good | `"SwiftUI NavigationStack path binding programmatic navigation"` |
-| Good | `"Express.js middleware error handling async"` |
-| Bad | `"navigation"` |
-| Bad | `"middleware"` |
+| Quality | Example                                                          |
+| ------- | ---------------------------------------------------------------- |
+| Good    | `"SwiftUI NavigationStack path binding programmatic navigation"` |
+| Good    | `"Express.js middleware error handling async"`                   |
+| Bad     | `"navigation"`                                                   |
+| Bad     | `"middleware"`                                                   |
 
 Include the programming language or framework name when ambiguous.
 
@@ -124,8 +124,3 @@ docs7 search convex "mobile client"
 ```
 
 This returns a ranked list of matching libraries with IDs you can feed to `docs`.
-
-## Limits
-
-- Do not call `docs7 docs` more than 3 times per question. Use the best result you have.
-- Coverage is best for libraries with GitHub repos or documentation sites. Apple-native C APIs (CoreAudio, CGEventTap) are not indexed — use the `apple-docs` skill for those.
