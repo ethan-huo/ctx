@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/anthropics/docs7/api"
@@ -12,6 +13,7 @@ type LoginCmd struct {
 }
 
 func (c *LoginCmd) Run(client *api.Client) error {
+	fmt.Fprintln(os.Stderr, "Note: 'docs7 login' is deprecated. Use 'docs7 auth ctx7' instead.")
 	if err := api.Login(client.BaseURL, c.NoBrowser); err != nil {
 		return err
 	}
@@ -22,6 +24,7 @@ func (c *LoginCmd) Run(client *api.Client) error {
 type LogoutCmd struct{}
 
 func (c *LogoutCmd) Run(client *api.Client) error {
+	fmt.Fprintln(os.Stderr, "Note: 'docs7 logout' is deprecated. Use 'docs7 auth logout' instead.")
 	if err := api.ClearTokens(); err != nil {
 		fmt.Println("Not logged in.")
 		return nil
@@ -33,6 +36,7 @@ func (c *LogoutCmd) Run(client *api.Client) error {
 type WhoamiCmd struct{}
 
 func (c *WhoamiCmd) Run(client *api.Client) error {
+	fmt.Fprintln(os.Stderr, "Note: 'docs7 whoami' is deprecated. Use 'docs7 auth status' instead.")
 	token, _ := api.GetValidToken(client.BaseURL)
 	if token == "" {
 		fmt.Println("Not logged in.")

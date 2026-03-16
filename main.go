@@ -13,9 +13,11 @@ var cli struct {
 	Search cmd.SearchCmd `cmd:"" help:"Find a library by name"`
 	Docs   cmd.DocsCmd   `cmd:"" help:"Get documentation source URLs for a library"`
 	Read   cmd.ReadCmd   `cmd:"" help:"Read a document URL (github:// or https://)"`
-	Login  cmd.LoginCmd  `cmd:"" help:"Log in to Context7 (opens browser)"`
-	Logout cmd.LogoutCmd `cmd:"" help:"Log out and clear stored tokens"`
-	Whoami cmd.WhoamiCmd `cmd:"" help:"Show current login status"`
+	Auth   cmd.AuthCmd   `cmd:"" help:"Manage authentication for docs7 providers"`
+
+	Login  cmd.LoginCmd  `cmd:"" hidden:"" help:"Log in to Context7 (deprecated: use 'auth ctx7')"`
+	Logout cmd.LogoutCmd `cmd:"" hidden:"" help:"Log out (deprecated: use 'auth logout')"`
+	Whoami cmd.WhoamiCmd `cmd:"" hidden:"" help:"Show login status (deprecated: use 'auth status')"`
 }
 
 func main() {
