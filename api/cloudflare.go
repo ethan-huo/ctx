@@ -18,7 +18,7 @@ type CFCredentials struct {
 
 func cfCredentialsPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ctx", "credentials.json")
+	return filepath.Join(home, ".config", "ctx", "cloudflare.json")
 }
 
 func LoadCFCredentials() (*CFCredentials, error) {

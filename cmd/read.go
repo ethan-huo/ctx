@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 )
 
 type ReadCmd struct {
-	URL     string `arg:"" help:"URL to read (github://owner/repo/path or https://...)"`
+	URL     string `arg:"" help:"URL or local path to read (github://, https://, file://, or path)"`
 	Full    bool   `short:"f" help:"Use Cloudflare Browser Rendering for full JS-rendered content" default:"false"`
 	NoCache bool   `help:"Bypass cache, always fetch fresh"`
 	TOC     bool   `help:"Show heading outline with section numbers"`
@@ -31,12 +32,22 @@ const (
 
 func (c *ReadCmd) Run(_ *api.Client) error {
 	url := c.URL
+
+	// Local file — direct read, no cache
+	if path, ok := localPath(url); ok {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return c.output(path, string(data))
+	}
+
 	cacheURL := canonicalizeURL(url)
 
 	// Try cache
 	if !c.NoCache {
 		if content, _, ok := cache.Lookup(cacheURL); ok {
-			return c.output(cacheURL, content)
+			return c.output(cache.ContentPath(cacheURL), content)
 		}
 	}
 
@@ -56,7 +67,7 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 			"\n---\nContent may be incomplete (JS-rendered page). Use `ctx read -f %s` for full rendering.\n", url)
 	}
 
-	return c.output(cacheURL, content)
+	return c.output(cache.ContentPath(cacheURL), content)
 }
 
 // fetch dispatches to the right fetcher and returns (content, source, error).
@@ -87,7 +98,8 @@ func (c *ReadCmd) fetch(url string) (string, string, error) {
 }
 
 // output handles --toc, -s, and default (with truncation).
-func (c *ReadCmd) output(cacheURL, content string) error {
+// contentPath is the file path shown in truncation hints (cache path or local file path).
+func (c *ReadCmd) output(contentPath, content string) error {
 	source := []byte(content)
 
 	if c.TOC {
@@ -124,7 +136,7 @@ func (c *ReadCmd) output(cacheURL, content string) error {
 		fmt.Println(strings.Join(lines[:truncateOutput], "\n"))
 		fmt.Printf("\n---\nDocument truncated (%d lines). Full content: %s\n"+
 			"Use --toc to see outline, or -s <number> to read a section.\n",
-			len(lines), cache.ContentPath(cacheURL))
+			len(lines), contentPath)
 		return nil
 	}
 
@@ -259,6 +271,30 @@ func fetchJina(originalURL string) (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+// localPath resolves file://, absolute, relative, and ~ paths.
+// Returns the resolved absolute path and true if the input is a local path.
+func localPath(url string) (string, bool) {
+	var p string
+	switch {
+	case strings.HasPrefix(url, "file://"):
+		p = strings.TrimPrefix(url, "file://")
+	case strings.HasPrefix(url, "/"):
+		p = url
+	case strings.HasPrefix(url, "./"), strings.HasPrefix(url, "../"):
+		p = url
+	case strings.HasPrefix(url, "~/"):
+		home, _ := os.UserHomeDir()
+		p = filepath.Join(home, url[2:])
+	default:
+		return "", false
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p, true
+	}
+	return abs, true
 }
 
 // --- Helpers ---

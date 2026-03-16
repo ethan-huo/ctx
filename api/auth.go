@@ -34,7 +34,7 @@ type TokenData struct {
 
 func credentialsPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".context7", "credentials.json")
+	return filepath.Join(home, ".config", "ctx", "ctx7.json")
 }
 
 func LoadTokens() (*TokenData, error) {

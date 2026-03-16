@@ -65,10 +65,11 @@ GitHub reads use your `gh auth` token automatically.
 
 | URL | Strategy |
 |---|---|
+| Local path / `file://` | Direct file read |
 | `github://owner/repo/path` | GitHub Contents API |
 | `https://github.com/.../blob/...` | Auto-converted to GitHub API |
 | Any `https://` | `Accept: text/markdown` negotiation → Jina Reader fallback |
 
 ## AI Agent Integration
 
-The `skills/find-docs/` directory contains a SKILL.md for Claude Code / Cursor / similar tools. Install it with your agent's skill mechanism.
+The `skills/ctx/` directory contains a SKILL.md for Claude Code / Cursor / similar tools. Install it with your agent's skill mechanism.

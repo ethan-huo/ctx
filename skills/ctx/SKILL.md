@@ -1,5 +1,5 @@
 ---
-name: find-docs
+name: ctx
 description: >-
   Look up documentation for third-party libraries, frameworks, SDKs, APIs, CLI
   tools, and cloud services — search a documentation index by library name and
@@ -48,13 +48,14 @@ The `read` command auto-detects the URL type:
 
 | URL pattern                       | Strategy                                                                 |
 | --------------------------------- | ------------------------------------------------------------------------ |
+| Local path / `file://`            | Direct file read (no cache)                                              |
 | `github://owner/repo/path`        | GitHub API (authenticated via `gh auth`)                                 |
 | `https://github.com/.../blob/...` | GitHub API (auto-converted)                                              |
 | `https://...` (serves markdown)   | Direct fetch with `Accept: text/markdown`                                |
 | `https://...` (serves HTML)       | Jina Reader fallback → clean markdown                                    |
 | `https://...` (JS/SPA page)       | `ctx read -f <url>` → Cloudflare Browser Rendering (full JS rendering) |
 
-Results are cached for 1 hour at `~/.cache/ctx/`. Use `--no-cache` to force a fresh fetch.
+Remote results are cached for 1 hour at `~/.cache/ctx/`. Use `--no-cache` to force a fresh fetch.
 
 ### Navigating large documents
 
