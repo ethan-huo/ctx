@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -190,4 +191,33 @@ func TestBuildRequestBody_NilBodyAndOverrides(t *testing.T) {
 	// Should produce valid JSON (possibly just {})
 	m := mustUnmarshalBody(t, body)
 	_ = m // no panic = success
+}
+
+func TestBuildRequestBody_MarkdownDefaultCleanup(t *testing.T) {
+	body, err := BuildRequestBody("markdown", "http://example.com", nil, map[string]any{"url": "http://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustUnmarshalBody(t, body)
+	scripts, ok := m["addScriptTag"].([]any)
+	if !ok || len(scripts) == 0 {
+		t.Fatal("markdown endpoint should have default addScriptTag")
+	}
+	// Check that the script contains removal logic
+	tag := scripts[0].(map[string]any)
+	content, ok := tag["content"].(string)
+	if !ok || !strings.Contains(content, "remove()") {
+		t.Error("default cleanup script should contain remove() call")
+	}
+}
+
+func TestBuildRequestBody_NonMarkdownNoCleanup(t *testing.T) {
+	body, err := BuildRequestBody("screenshot", "http://example.com", nil, map[string]any{"url": "http://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustUnmarshalBody(t, body)
+	if _, ok := m["addScriptTag"]; ok {
+		t.Error("non-markdown endpoint should not have addScriptTag")
+	}
 }

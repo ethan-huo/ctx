@@ -68,33 +68,23 @@ func (c *Client) Markdown(ctx context.Context, url string, body []byte) (string,
 	return *result, nil
 }
 
-// Screenshot captures a webpage as an image.
-// The CF API returns raw binary; we use WithResponseInto to capture it.
+// Screenshot captures a webpage as a PNG image via direct HTTP call.
+// The CF SDK doesn't handle binary responses well, so we bypass it.
 func (c *Client) Screenshot(ctx context.Context, url string, body []byte) ([]byte, error) {
-	params := browser_rendering.ScreenshotNewParams{
-		AccountID: cloudflare.F(c.accountID),
+	if body == nil {
+		b, _ := json.Marshal(map[string]any{"url": url})
+		body = b
 	}
-	var opts []option.RequestOption
-	if body != nil {
-		opts = append(opts, option.WithRequestBody("application/json", body))
-	} else {
-		params.Body = browser_rendering.ScreenshotNewParamsBody{
-			URL: cloudflare.F(url),
-		}
-	}
-
-	var httpResp *http.Response
-	opts = append(opts, option.WithResponseInto(&httpResp))
-
-	_, err := c.inner.BrowserRendering.Screenshot.New(ctx, params, opts...)
+	resp, err := c.cfHTTP(ctx, "POST", "screenshot", body)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare screenshot: %w", err)
 	}
-	if httpResp == nil {
-		return nil, fmt.Errorf("cloudflare screenshot: no response")
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		data, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("cloudflare screenshot HTTP %d: %s", resp.StatusCode, data)
 	}
-	defer httpResp.Body.Close()
-	return io.ReadAll(httpResp.Body)
+	return io.ReadAll(resp.Body)
 }
 
 // Links extracts all links from a webpage.
@@ -240,9 +230,9 @@ type CrawlStatusResponse struct {
 	} `json:"result"`
 }
 
-var crawlHTTPClient = &http.Client{Timeout: 120 * time.Second}
+var cfHTTPClient = &http.Client{Timeout: 120 * time.Second}
 
-func (c *Client) crawlHTTP(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+func (c *Client) cfHTTP(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/browser-rendering/%s", c.accountID, path)
 
 	var bodyReader io.Reader
@@ -258,11 +248,11 @@ func (c *Client) crawlHTTP(ctx context.Context, method, path string, body []byte
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	return crawlHTTPClient.Do(req)
+	return cfHTTPClient.Do(req)
 }
 
 func (c *Client) CrawlStart(ctx context.Context, body []byte) (*CrawlStartResponse, error) {
-	resp, err := c.crawlHTTP(ctx, "POST", "crawl", body)
+	resp, err := c.cfHTTP(ctx, "POST", "crawl", body)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare crawl start: %w", err)
 	}
@@ -288,7 +278,7 @@ func (c *Client) CrawlStatus(ctx context.Context, jobID, cursor string) (*CrawlS
 	if cursor != "" {
 		path += "?cursor=" + cursor
 	}
-	resp, err := c.crawlHTTP(ctx, "GET", path, nil)
+	resp, err := c.cfHTTP(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare crawl status: %w", err)
 	}
@@ -310,7 +300,7 @@ func (c *Client) CrawlStatus(ctx context.Context, jobID, cursor string) (*CrawlS
 }
 
 func (c *Client) CrawlCancel(ctx context.Context, jobID string) error {
-	resp, err := c.crawlHTTP(ctx, "DELETE", "crawl/"+jobID, nil)
+	resp, err := c.cfHTTP(ctx, "DELETE", "crawl/"+jobID, nil)
 	if err != nil {
 		return fmt.Errorf("cloudflare crawl cancel: %w", err)
 	}

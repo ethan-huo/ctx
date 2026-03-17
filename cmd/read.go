@@ -22,7 +22,8 @@ import (
 )
 
 type ReadCmd struct {
-	URL     string `arg:"" help:"URL or local path to read (github://, https://, file://, or path)"`
+	cfrender.DataFlag
+	URL     string `arg:"" help:"URL or local path to read (github://, https://, file://, or path)" optional:""`
 	Full    bool   `short:"f" help:"Use Cloudflare Browser Rendering for full JS-rendered content" default:"false"`
 	NoCache bool   `help:"Bypass cache, always fetch fresh"`
 	TOC     bool   `help:"Show heading outline with section numbers"`
@@ -32,18 +33,40 @@ type ReadCmd struct {
 const summaryThreshold = 2000
 
 func (c *ReadCmd) Run(_ *api.Client) error {
-	url := c.URL
-
-	// Local file — direct read, no cache, no hints, no summary
-	if path, ok := localPath(url); ok {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("file not found: %s", path)
-		}
-		return c.output(path, string(data), false)
+	dataBody, err := c.ParseBody()
+	if err != nil {
+		return err
 	}
 
-	cacheKey := cache.Key("markdown", canonicalizeURL(url))
+	url := c.URL
+
+	// -d implies -f (CF rendering)
+	if dataBody != nil {
+		c.Full = true
+	}
+
+	// Local file — direct read, no cache, no hints, no summary
+	if url != "" {
+		if path, ok := localPath(url); ok {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("file not found: %s", path)
+			}
+			return c.output(path, string(data), false)
+		}
+	}
+
+	// Need a URL from either arg or -d body
+	if url == "" && dataBody == nil {
+		return fmt.Errorf("URL is required (as argument or in -d body)")
+	}
+
+	var cacheKey string
+	if dataBody != nil {
+		cacheKey = cache.Key("markdown", canonicalizeURL(url), string(dataBody))
+	} else {
+		cacheKey = cache.Key("markdown", canonicalizeURL(url))
+	}
 
 	// Try cache
 	if !c.NoCache {
@@ -53,7 +76,7 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 	}
 
 	// Fetch
-	content, source, err := c.fetch(url)
+	content, source, err := c.fetch(url, dataBody)
 	if err != nil {
 		return err
 	}
@@ -95,7 +118,7 @@ func extractDomainFromURL(rawURL string) string {
 }
 
 // fetch dispatches to the right fetcher and returns (content, source, error).
-func (c *ReadCmd) fetch(url string) (string, string, error) {
+func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
 	// github://owner/repo@ref/path or github://owner/repo/path
 	if strings.HasPrefix(url, "github://") {
 		path, ref := parseGitHubScheme(strings.TrimPrefix(url, "github://"))
@@ -123,9 +146,9 @@ func (c *ReadCmd) fetch(url string) (string, string, error) {
 		}
 	}
 
-	// -f flag: Cloudflare Browser Rendering
+	// -f flag or -d provided: Cloudflare Browser Rendering
 	if c.Full {
-		content, err := fetchCloudflare(url)
+		content, err := fetchCloudflare(url, dataBody)
 		return content, "cloudflare", err
 	}
 
@@ -140,7 +163,7 @@ func (c *ReadCmd) fetch(url string) (string, string, error) {
 
 	// HTML response — fallback to Cloudflare Browser Rendering
 	fmt.Fprintf(os.Stderr, "HTML response, rendering via Cloudflare...\n")
-	content, err = fetchCloudflare(url)
+	content, err = fetchCloudflare(url, dataBody)
 	return content, "cloudflare", err
 }
 
@@ -334,8 +357,12 @@ func fetchHTTP(url string) (string, error) {
 	return "", nil
 }
 
-func fetchCloudflare(targetURL string) (string, error) {
-	body, err := config.BuildRequestBody("markdown", targetURL, nil, map[string]any{"url": targetURL})
+func fetchCloudflare(targetURL string, dataBody []byte) (string, error) {
+	overrides := make(map[string]any)
+	if targetURL != "" {
+		overrides["url"] = targetURL
+	}
+	body, err := config.BuildRequestBody("markdown", targetURL, dataBody, overrides)
 	if err != nil {
 		return "", err
 	}

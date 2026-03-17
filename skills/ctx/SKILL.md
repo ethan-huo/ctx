@@ -34,11 +34,12 @@ ctx read <url>
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| (positional) | | required | URL or local path (`https://`, `github://`, `file://`, `/path`, `./path`) |
-| `--full` | `-f` | false | Force full JS rendering (skip HTTP attempt, use when page needs JavaScript) |
+| (positional) | | optional | URL or local path (`https://`, `github://`, `file://`, `/path`, `./path`) |
+| `--full` | `-f` | false | Force full JS rendering (skip HTTP attempt) |
 | `--no-cache` | | false | Bypass cache, always fetch fresh |
 | `--toc` | | false | Show heading outline with section numbers and line counts |
 | `--section` | `-s` | | Section(s) to extract (e.g. `1`, `1-3`, `1.2,3.1`) |
+| `--data` | `-d` | | CF API request body (JSON5, `@file`, or stdin). Implies `-f`. |
 
 Auto-detects URL type and fetches accordingly:
 - Local file / `file://` → direct read (always full content, no summary)
@@ -46,6 +47,8 @@ Auto-detects URL type and fetches accordingly:
 - `https://github.com/.../blob/...` → GitHub API (auto-converted)
 - `https://...` (markdown/text/JSON/XML/YAML) → direct fetch
 - `https://...` (HTML/SPA) → full JS rendering fallback; use `-f` to skip the HTTP attempt
+
+When rendering via Cloudflare, a content-density heuristic automatically strips navigation, sidebar, header, and footer noise — extracting only the main content block.
 
 **stdout/stderr contract**: stdout is always clean document content. Diagnostic hints (incomplete content, empty page warnings) go to stderr only.
 
