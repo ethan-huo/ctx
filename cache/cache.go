@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/ethan-huo/ctx/config"
 )
 
 const (
-	defaultTTL = 1 * time.Hour
-	maxEntries = 100
+	fallbackTTL = 1 * time.Hour
+	maxEntries  = 100
 )
 
 type Meta struct {
@@ -87,7 +89,7 @@ func Lookup(key, ext string) (data []byte, meta Meta, ok bool) {
 	if err := json.Unmarshal(raw, &meta); err != nil {
 		return nil, Meta{}, false
 	}
-	if time.Since(meta.FetchedAt) > defaultTTL {
+	if time.Since(meta.FetchedAt) > config.CacheTTL(fallbackTTL) {
 		return nil, Meta{}, false
 	}
 	data, err = os.ReadFile(Path(key, ext))

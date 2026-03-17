@@ -65,6 +65,12 @@ ctx site del example.com
   "defaults": {
     "gotoOptions": {"waitUntil": "networkidle2"},
     "viewport": {"width": 1920, "height": 1080}
+  },
+
+  // Cache TTL for all cached content (markdown, screenshots, links)
+  // Default: "1h". Examples: "30m", "4h", "15m"
+  "cache": {
+    "ttl": "1h"
   }
 }
 ```
