@@ -21,17 +21,19 @@ func TestStoreAndLookup(t *testing.T) {
 	setupTestDir(t)
 
 	url := "https://example.com/doc.md"
-	content := "# Hello\n\nWorld\n"
+	content := []byte("# Hello\n\nWorld\n")
+	key := Key("markdown", url)
 
-	if err := Store(url, content, "http"); err != nil {
+	err := Store(key, content, ".md", Meta{URL: url, Source: "http"})
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, meta, ok := Lookup(url)
+	got, meta, ok := Lookup(key, ".md")
 	if !ok {
 		t.Fatal("Lookup returned false after Store")
 	}
-	if got != content {
+	if string(got) != string(content) {
 		t.Errorf("content = %q, want %q", got, content)
 	}
 	if meta.URL != url {
@@ -39,9 +41,6 @@ func TestStoreAndLookup(t *testing.T) {
 	}
 	if meta.Source != "http" {
 		t.Errorf("meta.Source = %q, want %q", meta.Source, "http")
-	}
-	if meta.Lines != 3 {
-		t.Errorf("meta.Lines = %d, want 3", meta.Lines)
 	}
 	if meta.Size != len(content) {
 		t.Errorf("meta.Size = %d, want %d", meta.Size, len(content))
@@ -51,9 +50,10 @@ func TestStoreAndLookup(t *testing.T) {
 func TestLookupMiss(t *testing.T) {
 	setupTestDir(t)
 
-	_, _, ok := Lookup("https://no-such-url.example.com")
+	key := Key("markdown", "https://no-such-url.example.com")
+	_, _, ok := Lookup(key, ".md")
 	if ok {
-		t.Error("Lookup returned true for non-existent URL")
+		t.Error("Lookup returned true for non-existent key")
 	}
 }
 
@@ -61,12 +61,11 @@ func TestLookupExpiredTTL(t *testing.T) {
 	setupTestDir(t)
 
 	url := "https://example.com/old.md"
-	if err := Store(url, "old content", "http"); err != nil {
-		t.Fatal(err)
-	}
+	key := Key("markdown", url)
+	Store(key, []byte("old content"), ".md", Meta{URL: url, Source: "http"})
 
 	// Backdate the meta file
-	mp := metaPath(url)
+	mp := metaPath(key)
 	data, _ := os.ReadFile(mp)
 	var meta Meta
 	json.Unmarshal(data, &meta)
@@ -74,7 +73,7 @@ func TestLookupExpiredTTL(t *testing.T) {
 	data, _ = json.MarshalIndent(meta, "", "  ")
 	os.WriteFile(mp, data, 0o644)
 
-	_, _, ok := Lookup(url)
+	_, _, ok := Lookup(key, ".md")
 	if ok {
 		t.Error("Lookup returned true for expired entry")
 	}
@@ -84,18 +83,18 @@ func TestReStoreUpdatesEntry(t *testing.T) {
 	setupTestDir(t)
 
 	url := "https://example.com/doc.md"
-	Store(url, "v1", "http")
-	Store(url, "v2", "http")
+	key := Key("markdown", url)
+	Store(key, []byte("v1"), ".md", Meta{URL: url, Source: "http"})
+	Store(key, []byte("v2"), ".md", Meta{URL: url, Source: "http"})
 
-	got, _, ok := Lookup(url)
+	got, _, ok := Lookup(key, ".md")
 	if !ok {
 		t.Fatal("Lookup returned false")
 	}
-	if got != "v2" {
+	if string(got) != "v2" {
 		t.Errorf("content = %q, want %q", got, "v2")
 	}
 
-	// State should have exactly 1 entry (not 2)
 	s := loadState()
 	if len(s.Entries) != 1 {
 		t.Errorf("state has %d entries, want 1", len(s.Entries))
@@ -105,10 +104,10 @@ func TestReStoreUpdatesEntry(t *testing.T) {
 func TestEvictionAtMaxEntries(t *testing.T) {
 	setupTestDir(t)
 
-	// Store maxEntries + 5 items, oldest should be evicted
 	for i := 0; i < maxEntries+5; i++ {
 		url := fmt.Sprintf("https://example.com/%d", i)
-		if err := Store(url, "content", "test"); err != nil {
+		key := Key("markdown", url)
+		if err := Store(key, []byte("content"), ".md", Meta{URL: url, Source: "test"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,17 +117,19 @@ func TestEvictionAtMaxEntries(t *testing.T) {
 		t.Errorf("state has %d entries after eviction, want %d", len(s.Entries), maxEntries)
 	}
 
-	// First 5 entries should have been evicted — their files removed
+	// First 5 entries should have been evicted
 	for i := 0; i < 5; i++ {
 		url := fmt.Sprintf("https://example.com/%d", i)
-		if _, err := os.Stat(ContentPath(url)); !os.IsNotExist(err) {
+		key := Key("markdown", url)
+		if _, err := os.Stat(Path(key, ".md")); !os.IsNotExist(err) {
 			t.Errorf("evicted file still exists for url index %d", i)
 		}
 	}
 
 	// Last entry should still exist
 	lastURL := fmt.Sprintf("https://example.com/%d", maxEntries+4)
-	if _, err := os.Stat(ContentPath(lastURL)); err != nil {
+	lastKey := Key("markdown", lastURL)
+	if _, err := os.Stat(Path(lastKey, ".md")); err != nil {
 		t.Errorf("latest entry file missing: %v", err)
 	}
 }
@@ -142,7 +143,8 @@ func TestStateFileConsistency(t *testing.T) {
 		"https://c.com/3",
 	}
 	for _, u := range urls {
-		Store(u, "content-"+u, "test")
+		key := Key("markdown", u)
+		Store(key, []byte("content-"+u), ".md", Meta{URL: u, Source: "test"})
 	}
 
 	s := loadState()
@@ -150,12 +152,11 @@ func TestStateFileConsistency(t *testing.T) {
 		t.Fatalf("state has %d entries, want 3", len(s.Entries))
 	}
 
-	// Each entry key should correspond to a real file pair
 	for _, e := range s.Entries {
-		mdPath := filepath.Join(Dir(), e.Key+".md")
+		contentP := filepath.Join(Dir(), e.Key+e.Ext)
 		metaP := filepath.Join(Dir(), e.Key+".meta.json")
-		if _, err := os.Stat(mdPath); err != nil {
-			t.Errorf("missing .md for key %s: %v", e.Key, err)
+		if _, err := os.Stat(contentP); err != nil {
+			t.Errorf("missing content for key %s: %v", e.Key, err)
 		}
 		if _, err := os.Stat(metaP); err != nil {
 			t.Errorf("missing .meta.json for key %s: %v", e.Key, err)
@@ -163,15 +164,39 @@ func TestStateFileConsistency(t *testing.T) {
 	}
 }
 
-func TestContentPathDeterministic(t *testing.T) {
-	p1 := ContentPath("https://example.com/doc")
-	p2 := ContentPath("https://example.com/doc")
-	if p1 != p2 {
-		t.Errorf("ContentPath not deterministic: %q != %q", p1, p2)
+func TestDifferentOpsOnSameURL(t *testing.T) {
+	setupTestDir(t)
+
+	url := "https://example.com/page"
+	mdKey := Key("markdown", url)
+	ssKey := Key("screenshot", url)
+
+	Store(mdKey, []byte("# Hello"), ".md", Meta{URL: url, Source: "cloudflare"})
+	Store(ssKey, []byte{0x89, 0x50, 0x4E, 0x47}, ".png", Meta{URL: url, Source: "cloudflare", ContentType: "image/png"})
+
+	md, _, ok := Lookup(mdKey, ".md")
+	if !ok || string(md) != "# Hello" {
+		t.Error("markdown lookup failed")
 	}
 
-	p3 := ContentPath("https://example.com/other")
-	if p1 == p3 {
-		t.Error("different URLs produced same ContentPath")
+	ss, meta, ok := Lookup(ssKey, ".png")
+	if !ok || len(ss) != 4 {
+		t.Error("screenshot lookup failed")
+	}
+	if meta.ContentType != "image/png" {
+		t.Errorf("content type = %q, want image/png", meta.ContentType)
+	}
+}
+
+func TestKeyDeterministic(t *testing.T) {
+	k1 := Key("markdown", "https://example.com/doc")
+	k2 := Key("markdown", "https://example.com/doc")
+	if k1 != k2 {
+		t.Errorf("Key not deterministic: %q != %q", k1, k2)
+	}
+
+	k3 := Key("screenshot", "https://example.com/doc")
+	if k1 == k3 {
+		t.Error("different operations produced same Key")
 	}
 }

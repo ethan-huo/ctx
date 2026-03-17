@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethan-huo/ctx/api"
+	"github.com/ethan-huo/ctx/cfrender"
 	"golang.org/x/term"
 )
 
@@ -60,19 +61,27 @@ func (c *AuthLoginCloudflareCmd) Run(_ *api.Client) error {
 		return fmt.Errorf("API token is required")
 	}
 
-	fmt.Print("Validating token... ")
-	if err := api.ValidateCFToken(accountID, token); err != nil {
-		fmt.Println("failed")
-		return fmt.Errorf("invalid credentials: %w", err)
-	}
-	fmt.Println("ok")
-
+	// Save first so cfrender.New() can load them for validation
 	if err := api.SaveCFCredentials(&api.CFCredentials{
 		AccountID: accountID,
 		APIToken:  token,
 	}); err != nil {
 		return err
 	}
+
+	fmt.Print("Validating token... ")
+	cfClient, err := cfrender.New()
+	if err != nil {
+		fmt.Println("failed")
+		_ = api.ClearCFCredentials()
+		return fmt.Errorf("invalid credentials: %w", err)
+	}
+	if err := cfClient.Validate(); err != nil {
+		fmt.Println("failed")
+		_ = api.ClearCFCredentials()
+		return fmt.Errorf("invalid credentials: %w", err)
+	}
+	fmt.Println("ok")
 	fmt.Println("Cloudflare credentials saved.")
 	return nil
 }

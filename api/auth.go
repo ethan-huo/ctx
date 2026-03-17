@@ -10,11 +10,12 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethan-huo/ctx/config"
 )
 
 const (
@@ -32,42 +33,45 @@ type TokenData struct {
 	Scope        string `json:"scope,omitempty"`
 }
 
-func credentialsPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ctx", "ctx7.json")
-}
-
 func LoadTokens() (*TokenData, error) {
-	data, err := os.ReadFile(credentialsPath())
+	creds, err := config.LoadCredentials()
 	if err != nil {
 		return nil, err
 	}
-	var t TokenData
-	if err := json.Unmarshal(data, &t); err != nil {
-		return nil, err
+	c := creds.Ctx7
+	if c.AccessToken == "" {
+		return nil, fmt.Errorf("not logged in to Context7")
 	}
-	return &t, nil
+	return &TokenData{
+		AccessToken:  c.AccessToken,
+		RefreshToken: c.RefreshToken,
+		TokenType:    c.TokenType,
+		ExpiresIn:    c.ExpiresIn,
+		ExpiresAt:    c.ExpiresAt,
+		Scope:        c.Scope,
+	}, nil
 }
 
 func SaveTokens(t *TokenData) error {
 	if t.ExpiresAt == 0 && t.ExpiresIn > 0 {
 		t.ExpiresAt = time.Now().UnixMilli() + t.ExpiresIn*1000
 	}
-
-	dir := filepath.Dir(credentialsPath())
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(t, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(credentialsPath(), data, 0o600)
+	return config.UpdateCredentials(func(creds *config.Credentials) {
+		creds.Ctx7 = config.Ctx7Creds{
+			AccessToken:  t.AccessToken,
+			RefreshToken: t.RefreshToken,
+			TokenType:    t.TokenType,
+			ExpiresIn:    t.ExpiresIn,
+			ExpiresAt:    t.ExpiresAt,
+			Scope:        t.Scope,
+		}
+	})
 }
 
 func ClearTokens() error {
-	return os.Remove(credentialsPath())
+	return config.UpdateCredentials(func(creds *config.Credentials) {
+		creds.Ctx7 = config.Ctx7Creds{}
+	})
 }
 
 func IsTokenExpired(t *TokenData) bool {

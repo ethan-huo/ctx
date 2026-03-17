@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -17,15 +16,16 @@ const (
 )
 
 type Meta struct {
-	URL       string    `json:"url"`
-	Source    string    `json:"source"`
-	FetchedAt time.Time `json:"fetched_at"`
-	Lines    int       `json:"lines"`
-	Size     int       `json:"size"`
+	URL         string    `json:"url"`
+	Source      string    `json:"source"`
+	ContentType string    `json:"content_type,omitempty"`
+	FetchedAt   time.Time `json:"fetched_at"`
+	Size        int       `json:"size"`
 }
 
 type stateEntry struct {
 	Key       string    `json:"key"`
+	Ext       string    `json:"ext"`
 	URL       string    `json:"url"`
 	FetchedAt time.Time `json:"fetched_at"`
 }
@@ -44,66 +44,83 @@ func statePath() string {
 	return filepath.Join(Dir(), "state.json")
 }
 
-func Key(url string) string {
-	h := sha256.Sum256([]byte(url))
+// Key builds a cache key from one or more parts (e.g., operation + URL + params).
+func Key(parts ...string) string {
+	h := sha256.Sum256([]byte(join(parts)))
 	return fmt.Sprintf("%x", h)
 }
 
-func ContentPath(url string) string {
-	return filepath.Join(Dir(), Key(url)+".md")
-}
-
-func metaPath(url string) string {
-	return filepath.Join(Dir(), Key(url)+".meta.json")
-}
-
-func Lookup(url string) (content string, meta Meta, ok bool) {
-	mp := metaPath(url)
-	data, err := os.ReadFile(mp)
-	if err != nil {
-		return "", Meta{}, false
+func join(parts []string) string {
+	if len(parts) == 1 {
+		return parts[0]
 	}
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return "", Meta{}, false
+	total := 0
+	for _, p := range parts {
+		total += len(p) + 1
+	}
+	buf := make([]byte, 0, total)
+	for i, p := range parts {
+		if i > 0 {
+			buf = append(buf, 0)
+		}
+		buf = append(buf, p...)
+	}
+	return string(buf)
+}
+
+// Path returns the content file path for a key with the given extension.
+func Path(key, ext string) string {
+	return filepath.Join(Dir(), key+ext)
+}
+
+func metaPath(key string) string {
+	return filepath.Join(Dir(), key+".meta.json")
+}
+
+// Lookup retrieves cached data by key and expected extension.
+func Lookup(key, ext string) (data []byte, meta Meta, ok bool) {
+	mp := metaPath(key)
+	raw, err := os.ReadFile(mp)
+	if err != nil {
+		return nil, Meta{}, false
+	}
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, Meta{}, false
 	}
 	if time.Since(meta.FetchedAt) > defaultTTL {
-		return "", Meta{}, false
+		return nil, Meta{}, false
 	}
-	raw, err := os.ReadFile(ContentPath(url))
+	data, err = os.ReadFile(Path(key, ext))
 	if err != nil {
-		return "", Meta{}, false
+		return nil, Meta{}, false
 	}
-	return string(raw), meta, true
+	return data, meta, true
 }
 
-func Store(url, content, source string) error {
+// Store saves data to cache with the given key, extension, and metadata.
+func Store(key string, data []byte, ext string, meta Meta) error {
 	d := Dir()
 	if err := os.MkdirAll(d, 0o755); err != nil {
 		return err
 	}
 
-	lines := strings.Count(content, "\n")
-	now := time.Now()
-	meta := Meta{
-		URL:       url,
-		Source:    source,
-		FetchedAt: now,
-		Lines:    lines,
-		Size:     len(content),
+	meta.Size = len(data)
+	if meta.FetchedAt.IsZero() {
+		meta.FetchedAt = time.Now()
 	}
+
 	metaJSON, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(ContentPath(url), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(Path(key, ext), data, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(metaPath(url), metaJSON, 0o644); err != nil {
+	if err := os.WriteFile(metaPath(key), metaJSON, 0o644); err != nil {
 		return err
 	}
 
-	// Update state index and evict if over limit
-	return updateState(Key(url), url, now)
+	return updateState(key, ext, meta.URL, meta.FetchedAt)
 }
 
 func loadState() stateFile {
@@ -126,10 +143,9 @@ func saveState(s stateFile) error {
 	return os.WriteFile(statePath(), data, 0o644)
 }
 
-func updateState(key, url string, fetchedAt time.Time) error {
+func updateState(key, ext, url string, fetchedAt time.Time) error {
 	s := loadState()
 
-	// Remove existing entry with same key (re-fetch case)
 	filtered := make([]stateEntry, 0, len(s.Entries))
 	for _, e := range s.Entries {
 		if e.Key != key {
@@ -137,14 +153,13 @@ func updateState(key, url string, fetchedAt time.Time) error {
 		}
 	}
 
-	// Append new entry
 	filtered = append(filtered, stateEntry{
 		Key:       key,
+		Ext:       ext,
 		URL:       url,
 		FetchedAt: fetchedAt,
 	})
 
-	// Evict oldest if over limit
 	if len(filtered) > maxEntries {
 		sort.Slice(filtered, func(i, j int) bool {
 			return filtered[i].FetchedAt.Before(filtered[j].FetchedAt)
@@ -152,7 +167,7 @@ func updateState(key, url string, fetchedAt time.Time) error {
 		evict := filtered[:len(filtered)-maxEntries]
 		filtered = filtered[len(filtered)-maxEntries:]
 		for _, e := range evict {
-			removeFiles(e.Key)
+			removeFiles(e.Key, e.Ext)
 		}
 	}
 
@@ -160,8 +175,10 @@ func updateState(key, url string, fetchedAt time.Time) error {
 	return saveState(s)
 }
 
-func removeFiles(key string) {
+func removeFiles(key, ext string) {
 	d := Dir()
-	os.Remove(filepath.Join(d, key+".md"))
+	if ext != "" {
+		os.Remove(filepath.Join(d, key+ext))
+	}
 	os.Remove(filepath.Join(d, key+".meta.json"))
 }

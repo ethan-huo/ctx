@@ -10,10 +10,16 @@ import (
 )
 
 var cli struct {
-	Search cmd.SearchCmd `cmd:"" help:"Find a library by name"`
-	Docs   cmd.DocsCmd   `cmd:"" help:"Get documentation source URLs for a library"`
-	Read   cmd.ReadCmd   `cmd:"" help:"Read a document URL (github:// or https://)"`
-	Auth   cmd.AuthCmd   `cmd:"" help:"Manage authentication"`
+	Search     cmd.SearchCmd     `cmd:"" help:"Find a library by name"`
+	Docs       cmd.DocsCmd       `cmd:"" help:"Get documentation source URLs for a library"`
+	Read       cmd.ReadCmd       `cmd:"" help:"Read a document URL (github:// or https://)"`
+	Screenshot cmd.ScreenshotCmd `cmd:"" help:"Take a screenshot of a webpage"`
+	Links      cmd.LinksCmd      `cmd:"" help:"Extract links from a webpage"`
+	Scrape     cmd.ScrapeCmd     `cmd:"" help:"Scrape elements from a webpage by CSS selector"`
+	JSON       cmd.JSONCmd       `cmd:"json" help:"Extract structured data from a webpage using AI"`
+	Crawl      cmd.CrawlCmd      `cmd:"" help:"Crawl a website for documentation"`
+	Site       cmd.SiteCmd       `cmd:"" help:"Manage per-domain headers for browser rendering"`
+	Auth       cmd.AuthCmd       `cmd:"" help:"Manage authentication"`
 }
 
 func main() {

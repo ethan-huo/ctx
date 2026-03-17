@@ -17,7 +17,8 @@ func (c *SearchCmd) Run(client *api.Client) error {
 		return err
 	}
 	if len(libs) == 0 {
-		return fmt.Errorf("no libraries found for %q", c.Name)
+		fmt.Printf("No libraries found for %q. Try a more specific name or check spelling.\n", c.Name)
+		return nil
 	}
 
 	for i, lib := range libs {
@@ -35,5 +36,6 @@ func (c *SearchCmd) Run(client *api.Client) error {
 		fmt.Printf("   snippets:%d  score:%.0f  stars:%d\n\n",
 			lib.TotalSnippets, lib.BenchmarkScore, lib.Stars)
 	}
+	fmt.Println("Next: ctx docs <library-name> \"<query>\" to find relevant documentation.")
 	return nil
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/ethan-huo/ctx/api"
 	"github.com/ethan-huo/ctx/cache"
+	"github.com/ethan-huo/ctx/cfrender"
+	"github.com/ethan-huo/ctx/config"
 	"github.com/ethan-huo/ctx/markdown"
 )
 
@@ -42,12 +45,12 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 		return c.output(path, string(data))
 	}
 
-	cacheURL := canonicalizeURL(url)
+	cacheKey := cache.Key("markdown", canonicalizeURL(url))
 
 	// Try cache
 	if !c.NoCache {
-		if content, _, ok := cache.Lookup(cacheURL); ok {
-			return c.output(cache.ContentPath(cacheURL), content)
+		if data, _, ok := cache.Lookup(cacheKey, ".md"); ok {
+			return c.output(cache.Path(cacheKey, ".md"), string(data))
 		}
 	}
 
@@ -60,14 +63,17 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 	incomplete := looksIncomplete(content)
 
 	// Store clean content before appending any hints
-	_ = cache.Store(cacheURL, content, source)
+	_ = cache.Store(cacheKey, []byte(content), ".md", cache.Meta{
+		URL:    canonicalizeURL(url),
+		Source: source,
+	})
 
 	if incomplete {
 		content += fmt.Sprintf(
 			"\n---\nContent may be incomplete (JS-rendered page). Use `ctx read -f %s` for full rendering.\n", url)
 	}
 
-	return c.output(cache.ContentPath(cacheURL), content)
+	return c.output(cache.Path(cacheKey, ".md"), content)
 }
 
 // fetch dispatches to the right fetcher and returns (content, source, error).
@@ -92,9 +98,19 @@ func (c *ReadCmd) fetch(url string) (string, string, error) {
 		return content, "cloudflare", err
 	}
 
-	// Default: HTTP with markdown negotiation + Jina fallback
+	// Default: HTTP with markdown negotiation, CF fallback for HTML
 	content, err := fetchHTTP(url)
-	return content, "http", err
+	if err != nil {
+		return "", "", err
+	}
+	if content != "" {
+		return content, "http", nil
+	}
+
+	// HTML response — fallback to Cloudflare Browser Rendering
+	fmt.Fprintf(os.Stderr, "HTML response, rendering via Cloudflare...\n")
+	content, err = fetchCloudflare(url)
+	return content, "cloudflare", err
 }
 
 // output handles --toc, -s, and default (with truncation).
@@ -119,7 +135,7 @@ func (c *ReadCmd) output(contentPath, content string) error {
 			return err
 		}
 		if len(matched) == 0 {
-			return fmt.Errorf("no sections matched %q", c.Section)
+			return fmt.Errorf("no sections matched %q — use `ctx read %s --toc` to see available sections", c.Section, c.URL)
 		}
 		for i, h := range matched {
 			if i > 0 {
@@ -236,41 +252,20 @@ func fetchHTTP(url string) (string, error) {
 		return string(body), nil
 	}
 
-	// HTML response — fallback to Jina Reader
-	return fetchJina(url)
+	// HTML response — signal caller to use CF fallback
+	return "", nil
 }
 
-func fetchCloudflare(url string) (string, error) {
-	creds, err := api.LoadCFCredentials()
-	if err != nil {
-		return "", fmt.Errorf("cloudflare not configured — run `ctx auth cloudflare` first")
-	}
-	content, err := api.FetchMarkdownCF(creds.AccountID, creds.APIToken, url)
-	if err != nil {
-		return "", fmt.Errorf("cloudflare browser rendering: %w", err)
-	}
-	return content, nil
-}
-
-func fetchJina(originalURL string) (string, error) {
-	req, err := http.NewRequest("GET", "https://r.jina.ai/"+originalURL, nil)
+func fetchCloudflare(targetURL string) (string, error) {
+	body, err := config.BuildRequestBody("markdown", targetURL, nil, map[string]any{"url": targetURL})
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Accept", "text/markdown")
-	resp, err := httpClient.Do(req)
+	c, err := cfrender.New()
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("Jina Reader %d for %s", resp.StatusCode, originalURL)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return c.Markdown(context.Background(), targetURL, body)
 }
 
 // localPath resolves file://, absolute, relative, and ~ paths.

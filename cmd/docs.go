@@ -21,7 +21,8 @@ func (c *DocsCmd) Run(client *api.Client) error {
 			return err
 		}
 		if len(libs) == 0 {
-			return fmt.Errorf("no libraries found for %q", c.Name)
+			fmt.Printf("No libraries found for %q. Try: ctx search %s\n", c.Name, c.Name)
+			return nil
 		}
 		libraryID = libs[0].ID
 		fmt.Printf("# %s\n\n", libraryID)
@@ -34,7 +35,8 @@ func (c *DocsCmd) Run(client *api.Client) error {
 
 	sources := extractSources(resp)
 	if len(sources) == 0 {
-		return fmt.Errorf("no documentation found")
+		fmt.Printf("No documentation matched query %q in %s. Try a broader query.\n", c.Query, libraryID)
+		return nil
 	}
 
 	// Items

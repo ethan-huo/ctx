@@ -68,7 +68,20 @@ GitHub reads use your `gh auth` token automatically.
 | Local path / `file://` | Direct file read |
 | `github://owner/repo/path` | GitHub Contents API |
 | `https://github.com/.../blob/...` | Auto-converted to GitHub API |
-| Any `https://` | `Accept: text/markdown` negotiation → Jina Reader fallback |
+| Any `https://` | `Accept: text/markdown` negotiation → Cloudflare Browser Rendering fallback |
+
+## Browser Rendering Commands
+
+All commands below use [Cloudflare Browser Rendering](https://developers.cloudflare.com/browser-rendering/) and support `-d` for passing full API request bodies as JSON5.
+
+```bash
+ctx screenshot <url> [--full-page] [--selector] [-o file]
+ctx links <url> [--internal-only] [--visible-only]
+ctx scrape <url> -s <selector> [--text-only]
+ctx crawl <url> [--limit N] [--include/--exclude patterns]
+```
+
+Use `-d @file.json` or `-d -` (stdin/heredoc) to pass cookies, auth, viewport, and other CF API parameters.
 
 ## AI Agent Integration
 
