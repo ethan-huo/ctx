@@ -2,7 +2,7 @@
 
 BIN_DIR := bin
 BIN := $(BIN_DIR)/ctx
-LOCAL_BIN := /usr/local/bin/ctx
+LOCAL_BIN := $(HOME)/.local/bin/ctx
 
 build:
 	@mkdir -p $(BIN_DIR)
