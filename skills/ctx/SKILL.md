@@ -60,6 +60,8 @@ Other useful `-d` parameters: `cookies`, `waitForSelector`, `gotoOptions.waitUnt
 
 **stdout/stderr contract**: stdout is always clean document content. Diagnostic hints (incomplete content, empty page warnings) go to stderr only.
 
+**IMPORTANT**: Never pipe ctx output through `head`, `tail`, `cut`, or any truncation. ctx already manages content length — large documents return a structural summary automatically. Truncating destroys the summary structure and section references.
+
 ### 3. Navigate large documents
 
 Documents over 2000 lines produce a **structural summary** instead of the full content. The output starts with `[ctx:summary]` and shows every section heading with line counts and a preview:
