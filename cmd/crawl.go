@@ -18,7 +18,7 @@ type CrawlCmd struct {
 	cfrender.DataFlag
 	Target  string   `arg:"" help:"URL to crawl or job ID to check"`
 	Limit   int      `help:"Max pages to crawl" default:"10"`
-	Depth   int      `help:"Max link depth" default:"0"`
+	Depth   int      `help:"Max link depth" default:"1"`
 	Include []string `help:"URL include patterns (glob)"`
 	Exclude []string `help:"URL exclude patterns (glob)"`
 	NoWait  bool     `help:"Start crawl and return job ID without waiting" default:"false"`
@@ -51,6 +51,10 @@ func (c *CrawlCmd) handleJobID(ctx context.Context, client *cfrender.Client, job
 }
 
 func (c *CrawlCmd) handleURL(ctx context.Context, client *cfrender.Client, url string) error {
+	if c.Cancel {
+		return fmt.Errorf("--cancel requires a job ID, not a URL. Use `ctx crawl <url>` first, then cancel with the returned job ID")
+	}
+
 	dataBody, err := c.ParseBody()
 	if err != nil {
 		return err
@@ -61,9 +65,7 @@ func (c *CrawlCmd) handleURL(ctx context.Context, client *cfrender.Client, url s
 	overrides["limit"] = c.Limit
 	overrides["formats"] = []string{"markdown"}
 
-	if c.Depth > 0 {
-		overrides["depth"] = c.Depth
-	}
+	overrides["depth"] = c.Depth
 
 	opts := make(map[string]any)
 	if len(c.Include) > 0 {
@@ -97,7 +99,7 @@ func (c *CrawlCmd) handleURL(ctx context.Context, client *cfrender.Client, url s
 }
 
 func (c *CrawlCmd) pollAndPrint(ctx context.Context, client *cfrender.Client, jobID string) error {
-	cursor := ""
+	cursor := 0
 	printed := make(map[string]bool)
 	deadline := time.Now().Add(10 * time.Minute)
 
@@ -123,19 +125,22 @@ func (c *CrawlCmd) pollAndPrint(ctx context.Context, client *cfrender.Client, jo
 		}
 
 		cursor = status.Result.Cursor
+		st := status.Result.Status
 
-		terminal := status.Status == "completed" ||
-			status.Status == "cancelled_by_user" ||
-			status.Status == "cancelled_due_to_timeout" ||
-			status.Status == "cancelled_due_to_limits" ||
-			status.Status == "errored"
+		terminal := st == "completed" || st == "complete" ||
+			st == "cancelled_by_user" ||
+			st == "cancelled_due_to_timeout" ||
+			st == "cancelled_due_to_limits" ||
+			st == "errored"
 
-		if terminal && cursor == "" {
-			if len(printed) == 0 {
+		if terminal && cursor == 0 {
+			success := st == "completed" || st == "complete"
+			if len(printed) == 0 && success {
 				fmt.Fprintf(os.Stderr, "Crawl completed but found no pages. Check the URL and try: ctx crawl %s --limit %d --depth 1\n", c.Target, c.Limit)
-			} else if status.Status != "completed" {
-				fmt.Fprintf(os.Stderr, "\n---\nCrawl ended: %s. ", status.Status)
-				switch status.Status {
+			}
+			if !success {
+				fmt.Fprintf(os.Stderr, "\n---\nCrawl ended: %s. ", st)
+				switch st {
 				case "cancelled_due_to_timeout":
 					fmt.Fprintf(os.Stderr, "Try smaller --limit or --depth.\n")
 				case "cancelled_due_to_limits":
@@ -143,11 +148,12 @@ func (c *CrawlCmd) pollAndPrint(ctx context.Context, client *cfrender.Client, jo
 				default:
 					fmt.Fprintf(os.Stderr, "Use `ctx crawl %s` to retry.\n", c.Target)
 				}
+				return fmt.Errorf("crawl %s: %s", jobID, st)
 			}
 			return nil
 		}
 
-		if cursor == "" {
+		if cursor == 0 {
 			fmt.Fprintf(os.Stderr, "Crawling... %d pages collected\n", len(printed))
 			time.Sleep(2 * time.Second)
 		}

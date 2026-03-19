@@ -96,11 +96,13 @@ func GetValidToken(baseURL string) (string, error) {
 	}
 
 	if tokens.RefreshToken == "" {
+		fmt.Fprintf(os.Stderr, "Context7 token expired and no refresh token available. Run: ctx auth login\n")
 		return "", nil
 	}
 
 	newTokens, err := refreshToken(baseURL, tokens.RefreshToken)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Context7 token refresh failed: %v — falling back to anonymous. Run: ctx auth login\n", err)
 		return "", nil
 	}
 	if err := SaveTokens(newTokens); err != nil {

@@ -127,58 +127,68 @@ type ScrapeElementHit struct {
 }
 
 // Scrape extracts elements from a webpage by CSS selectors.
+// Bypasses the SDK because it mismodels the CF response (results is an array, not a struct).
 func (c *Client) Scrape(ctx context.Context, url string, selectors []string, body []byte) ([]ScrapeResult, error) {
-	params := browser_rendering.ScrapeNewParams{
-		AccountID: cloudflare.F(c.accountID),
-	}
-	var opts []option.RequestOption
-	if body != nil {
-		opts = append(opts, option.WithRequestBody("application/json", body))
-	} else {
+	if body == nil {
 		elements := make([]map[string]string, len(selectors))
 		for i, s := range selectors {
 			elements[i] = map[string]string{"selector": s}
 		}
-		params.Body = browser_rendering.ScrapeNewParamsBody{
-			URL:      cloudflare.F(url),
-			Elements: cloudflare.F[interface{}](elements),
-		}
+		b, _ := json.Marshal(map[string]any{"url": url, "elements": elements})
+		body = b
 	}
 
-	result, err := c.inner.BrowserRendering.Scrape.New(ctx, params, opts...)
+	resp, err := c.cfHTTP(ctx, "POST", "scrape", body)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare scrape: %w", err)
 	}
-	if result == nil {
-		return nil, nil
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cloudflare scrape HTTP %d: %s", resp.StatusCode, data)
 	}
 
-	// SDK models Results as a single struct per ScrapeNewResponse entry.
-	// Group entries by selector.
-	grouped := make(map[string]*ScrapeResult)
-	var order []string
-	for _, r := range *result {
-		sr, ok := grouped[r.Selector]
-		if !ok {
-			sr = &ScrapeResult{Selector: r.Selector}
-			grouped[r.Selector] = sr
-			order = append(order, r.Selector)
-		}
-		attrs := make(map[string]string)
-		for _, a := range r.Results.Attributes {
-			attrs[a.Name] = a.Value
-		}
-		sr.Results = append(sr.Results, ScrapeElementHit{
-			Text:       r.Results.Text,
-			HTML:       r.Results.HTML,
-			Attributes: attrs,
-			Width:      r.Results.Width,
-			Height:     r.Results.Height,
-		})
+	var cfResp struct {
+		Success bool `json:"success"`
+		Result  []struct {
+			Selector string `json:"selector"`
+			Results  []struct {
+				Text       string  `json:"text"`
+				HTML       string  `json:"html"`
+				Width      float64 `json:"width"`
+				Height     float64 `json:"height"`
+				Attributes []struct {
+					Name  string `json:"name"`
+					Value string `json:"value"`
+				} `json:"attributes"`
+			} `json:"results"`
+		} `json:"result"`
 	}
-	out := make([]ScrapeResult, len(order))
-	for i, sel := range order {
-		out[i] = *grouped[sel]
+	if err := json.Unmarshal(data, &cfResp); err != nil {
+		return nil, fmt.Errorf("invalid scrape response: %w", err)
+	}
+
+	out := make([]ScrapeResult, len(cfResp.Result))
+	for i, entry := range cfResp.Result {
+		sr := ScrapeResult{Selector: entry.Selector}
+		for _, r := range entry.Results {
+			attrs := make(map[string]string)
+			for _, a := range r.Attributes {
+				attrs[a.Name] = a.Value
+			}
+			sr.Results = append(sr.Results, ScrapeElementHit{
+				Text:       r.Text,
+				HTML:       r.HTML,
+				Attributes: attrs,
+				Width:      r.Width,
+				Height:     r.Height,
+			})
+		}
+		out[i] = sr
 	}
 	return out, nil
 }
@@ -222,11 +232,13 @@ type CrawlPage struct {
 }
 
 type CrawlStatusResponse struct {
-	Success bool   `json:"success"`
-	Status  string `json:"status"`
+	Success bool `json:"success"`
 	Result  struct {
-		Pages  []CrawlPage `json:"data"`
-		Cursor string      `json:"cursor"`
+		Status   string      `json:"status"`
+		Pages    []CrawlPage `json:"records"`
+		Cursor   int         `json:"cursor"`
+		Total    int         `json:"total"`
+		Finished int         `json:"finished"`
 	} `json:"result"`
 }
 
@@ -273,10 +285,10 @@ func (c *Client) CrawlStart(ctx context.Context, body []byte) (*CrawlStartRespon
 	return &result, nil
 }
 
-func (c *Client) CrawlStatus(ctx context.Context, jobID, cursor string) (*CrawlStatusResponse, error) {
+func (c *Client) CrawlStatus(ctx context.Context, jobID string, cursor int) (*CrawlStatusResponse, error) {
 	path := "crawl/" + jobID
-	if cursor != "" {
-		path += "?cursor=" + cursor
+	if cursor > 0 {
+		path += fmt.Sprintf("?cursor=%d", cursor)
 	}
 	resp, err := c.cfHTTP(ctx, "GET", path, nil)
 	if err != nil {
@@ -305,7 +317,7 @@ func (c *Client) CrawlCancel(ctx context.Context, jobID string) error {
 		return fmt.Errorf("cloudflare crawl cancel: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 && resp.StatusCode != 204 {
 		data, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("cloudflare crawl cancel HTTP %d: %s", resp.StatusCode, string(data))
 	}

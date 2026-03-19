@@ -67,7 +67,7 @@ func (c *SiteLsCmd) Run(_ *api.Client) error {
 
 type SiteSetCmd struct {
 	Domain string `arg:"" help:"Domain (e.g. example.com)"`
-	Key    string `arg:"" help:"Header name, or @file for bulk JSON5 import" optional:""`
+	Key    string `arg:"" help:"Header name, or @file for bulk JSON import" optional:""`
 	Value  string `arg:"" help:"Header value (supports @file)" optional:""`
 }
 

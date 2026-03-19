@@ -74,10 +74,11 @@ func SaveCredentials(c *Credentials) error {
 }
 
 // UpdateCredentials loads, applies a mutation, and saves.
+// Refuses to proceed if the existing file can't be read (prevents silent data loss).
 func UpdateCredentials(fn func(*Credentials)) error {
 	c, err := LoadCredentials()
 	if err != nil {
-		c = &Credentials{}
+		return fmt.Errorf("cannot update credentials (refusing to overwrite): %w", err)
 	}
 	fn(c)
 	return SaveCredentials(c)

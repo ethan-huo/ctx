@@ -52,7 +52,7 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 			if err != nil {
 				return fmt.Errorf("file not found: %s", path)
 			}
-			return c.output(path, string(data), false)
+			return c.output(path, url, string(data), false)
 		}
 	}
 
@@ -61,17 +61,23 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 		return fmt.Errorf("URL is required (as argument or in -d body)")
 	}
 
+	// Resolve effective URL (may come from -d body when c.URL is empty)
+	target := url
+	if target == "" && dataBody != nil {
+		target = effectiveURL("", dataBody)
+	}
+
 	var cacheKey string
 	if dataBody != nil {
-		cacheKey = cache.Key("markdown", canonicalizeURL(url), string(dataBody))
+		cacheKey = cache.Key("markdown", canonicalizeURL(target), string(dataBody))
 	} else {
-		cacheKey = cache.Key("markdown", canonicalizeURL(url))
+		cacheKey = cache.Key("markdown", canonicalizeURL(target))
 	}
 
 	// Try cache
 	if !c.NoCache {
 		if data, _, ok := cache.Lookup(cacheKey, ".md"); ok {
-			return c.output(cache.Path(cacheKey, ".md"), string(data), true)
+			return c.output(cache.Path(cacheKey, ".md"), target, string(data), true)
 		}
 	}
 
@@ -83,27 +89,27 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 
 	// Store clean content (no hints ever appended to stored content)
 	_ = cache.Store(cacheKey, []byte(content), ".md", cache.Meta{
-		URL:    canonicalizeURL(url),
+		URL:    canonicalizeURL(target),
 		Source: source,
 	})
 
 	// Hints go to stderr only, per contract Section 4
 	// looksIncomplete only applies to source=http (not github, not cloudflare)
 	if source == "http" && looksIncomplete(content) {
-		fmt.Fprintf(os.Stderr, "Content may be incomplete (JS-rendered page). Re-run with: ctx read -f %s\n", url)
+		fmt.Fprintf(os.Stderr, "Content may be incomplete (JS-rendered page). Re-run with: ctx read -f %s\n", target)
 	}
 
 	// Empty content hints (stderr), per source
 	if strings.TrimSpace(content) == "" {
 		switch source {
 		case "http":
-			fmt.Fprintf(os.Stderr, "No content returned for %s. Possible causes: authentication required, anti-bot protection, or empty page. Try: ctx read -f %s\n", url, url)
+			fmt.Fprintf(os.Stderr, "No content returned for %s. Possible causes: authentication required, anti-bot protection, or empty page. Try: ctx read -f %s\n", target, target)
 		case "cloudflare":
-			fmt.Fprintf(os.Stderr, "No content returned for %s. Possible causes: authentication required (ctx site set %s ...), anti-bot protection, or the page is genuinely empty.\n", url, extractDomainFromURL(url))
+			fmt.Fprintf(os.Stderr, "No content returned for %s. Possible causes: authentication required (ctx site set %s ...), anti-bot protection, or the page is genuinely empty.\n", target, extractDomainFromURL(target))
 		}
 	}
 
-	return c.output(cache.Path(cacheKey, ".md"), content, true)
+	return c.output(cache.Path(cacheKey, ".md"), target, content, true)
 }
 
 func extractDomainFromURL(rawURL string) string {
@@ -169,8 +175,9 @@ func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
 
 // output handles --toc, -s, and default (with structural summary for long docs).
 // contentPath is the cache file path (or local file path).
+// target is the effective URL/path for user-facing messages and summary navigation hints.
 // allowSummary controls whether long documents get a structural summary (false for local files).
-func (c *ReadCmd) output(contentPath, content string, allowSummary bool) error {
+func (c *ReadCmd) output(contentPath, target, content string, allowSummary bool) error {
 	source := []byte(content)
 
 	if c.TOC {
@@ -190,7 +197,7 @@ func (c *ReadCmd) output(contentPath, content string, allowSummary bool) error {
 			return err
 		}
 		if len(matched) == 0 {
-			return fmt.Errorf("no sections matched %q — use: ctx read %s --toc", c.Section, c.URL)
+			return fmt.Errorf("no sections matched %q — use: ctx read %s --toc", c.Section, target)
 		}
 		for i, h := range matched {
 			if i > 0 {
@@ -211,7 +218,7 @@ func (c *ReadCmd) output(contentPath, content string, allowSummary bool) error {
 	// Long remote document → structural summary
 	headings := markdown.ParseHeadings(source)
 	if len(headings) > 0 {
-		fmt.Print(markdown.FormatSummary(source, headings, c.URL, contentPath))
+		fmt.Print(markdown.FormatSummary(source, headings, target, contentPath))
 	} else {
 		fmt.Print(markdown.FormatLineSummary(source, contentPath))
 	}
