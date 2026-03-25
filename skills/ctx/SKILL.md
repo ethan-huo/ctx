@@ -105,7 +105,7 @@ Start with `ctx read`. Escalate when it's not enough:
 | Only need specific elements from a page  | `ctx scrape <url> -s "selector"`  | Extract an API table, skip sidebar noise |
 | Need content from many pages on one site | `ctx crawl <url> --limit N`       | Pull an entire docs section              |
 | Don't know which pages to read           | `ctx links <url>` then `ctx read` | Explore site structure first             |
-| Need visual info (UI, charts, layouts)   | `ctx screenshot <url>`            | Inspect rendered page                    |
+| Need visual info (UI, charts, layouts)   | `ctx screenshot <url>`            | Inspect rendered page; `--scroll 900` for below-the-fold |
 | Need structured data extraction          | `ctx json <url> --prompt "..."`   | Extract pricing tiers as JSON            |
 
 Common compositions:

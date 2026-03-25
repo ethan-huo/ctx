@@ -52,6 +52,14 @@ func BuildRequestBody(endpoint string, targetURL string, dataBody []byte, flagOv
 		injectDefaultCleanup(merged)
 	}
 
+	// Layer 1.6: Default gotoOptions for endpoints that navigate.
+	// Wait for network idle so SPA/lazy-loaded content has time to render.
+	// Markdown uses the SDK which sets this internally; raw-HTTP endpoints need it here.
+	switch endpoint {
+	case "screenshot", "scrape", "links", "json":
+		injectDefaultGotoOptions(merged)
+	}
+
 	// Layer 2: site headers for matching domain
 	if effectiveURL != "" {
 		if domain := extractDomain(effectiveURL); domain != "" {
@@ -112,6 +120,16 @@ func injectDefaultCleanup(merged map[string]any) {
 		merged["addScriptTag"] = append(existing, tag)
 	} else {
 		merged["addScriptTag"] = []any{tag}
+	}
+}
+
+// injectDefaultGotoOptions sets waitUntil: "networkidle2" unless gotoOptions is already present.
+func injectDefaultGotoOptions(merged map[string]any) {
+	if _, ok := merged["gotoOptions"]; ok {
+		return
+	}
+	merged["gotoOptions"] = map[string]any{
+		"waitUntil": "networkidle2",
 	}
 }
 
