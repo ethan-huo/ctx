@@ -1,11 +1,7 @@
 ---
 name: ctx
 description: >-
-  The `ctx` command, Search and read documentation for libraries, frameworks, SDKs, and APIs by name and query.
-  Read any URL or local file as clean markdown (GitHub repos, doc sites, JS-rendered SPAs).
-  Navigate large documents with TOC and section extraction.
-  Screenshot webpages, extract links, scrape elements by CSS selector, extract structured
-  JSON data, and crawl entire documentation sites.
+  Search and read library docs, GitHub-hosted content, read URLs and local files as markdown; navigate long documents; and screenshot, link-scan, scrape, extract structured data from, or crawl websites.
 ---
 
 ## Execution rules
@@ -45,7 +41,7 @@ ctx read <url>
 | `--no-cache` |       | false    | Bypass cache, always fetch fresh                                          |
 | `--toc`      |       | false    | Show heading outline with section numbers and line counts                 |
 | `--section`  | `-s`  |          | Section(s) to extract (e.g. `1`, `1-3`, `1.2,3.1`)                        |
-| `--comments` |       |          | GitHub issue comments to include (`1-3`, `7`, `all`)                     |
+| `--comments` |       |          | GitHub issue comments to include (`1-3`, `7`, `all`)                      |
 | `--data`     | `-d`  |          | CF API request body (JSON5, `@file`, or stdin)                            |
 
 Auto-detects URL type and fetches accordingly:
@@ -113,16 +109,16 @@ Use `--toc` for a compact outline without previews.
 
 **Explore before acting.** When facing an unfamiliar site, start with `ctx read` or `ctx links` to understand what's there, then decide which tool fits.
 
-| Situation                                | Tool                              | Example                                  |
-| ---------------------------------------- | --------------------------------- | ---------------------------------------- |
-| Need one page's full content             | `ctx read <url>`                  | Read a doc page                          |
-| Page is too long (>2000 lines)           | `ctx read <url> -s <section>`     | Navigate via structural summary          |
-| Only need specific elements from a page  | `ctx scrape <url> -s "selector"`  | Extract an API table, skip sidebar noise |
-| Need content from many pages on one site | `ctx crawl <url> --limit N`       | Pull an entire docs section              |
-| Don't know which pages to read           | `ctx links <url>` then `ctx read` | Explore site structure first             |
-| Need visual info (UI, charts, layouts)   | `ctx screenshot <url>`            | Inspect rendered page; `--scroll 900` for below-the-fold |
-| Screenshot only content, skip nav/ads    | `ctx screenshot <url> --selector "main"` | Common: `main`, `article`, `.content`, `#content` |
-| Need structured data extraction          | `ctx json <url> --prompt "..."`   | Extract pricing tiers as JSON            |
+| Situation                                | Tool                                     | Example                                                  |
+| ---------------------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| Need one page's full content             | `ctx read <url>`                         | Read a doc page                                          |
+| Page is too long (>2000 lines)           | `ctx read <url> -s <section>`            | Navigate via structural summary                          |
+| Only need specific elements from a page  | `ctx scrape <url> -s "selector"`         | Extract an API table, skip sidebar noise                 |
+| Need content from many pages on one site | `ctx crawl <url> --limit N`              | Pull an entire docs section                              |
+| Don't know which pages to read           | `ctx links <url>` then `ctx read`        | Explore site structure first                             |
+| Need visual info (UI, charts, layouts)   | `ctx screenshot <url>`                   | Inspect rendered page; `--scroll 900` for below-the-fold |
+| Screenshot only content, skip nav/ads    | `ctx screenshot <url> --selector "main"` | Common: `main`, `article`, `.content`, `#content`        |
+| Need structured data extraction          | `ctx json <url> --prompt "..."`          | Extract pricing tiers as JSON                            |
 
 ### Fast SPA detection and fallback
 
@@ -133,6 +129,7 @@ Use `--toc` for a compact outline without previews.
 3. **Do NOT try to probe the DOM** via `addScriptTag` JS injection — on SPAs, scripts often execute before the app renders, producing empty results.
 
 Quick decision tree:
+
 ```
 ctx read <url> → got content?
   YES → use read/scrape/screenshot --selector as needed
