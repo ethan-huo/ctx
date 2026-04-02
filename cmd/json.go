@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/ethan-huo/ctx/api"
 	"github.com/ethan-huo/ctx/cfrender"
@@ -67,15 +68,30 @@ func (c *JSONCmd) Run(_ *api.Client) error {
 		return fmt.Errorf("json extraction from %s failed: %w\nHint: ensure AI model is configured in ~/.config/ctx/credentials.yaml under 'ai:' section.", url, err)
 	}
 
-	if len(result) == 0 {
-		fmt.Printf("No data extracted from %s. Try a more specific --prompt or inspect the page with `ctx read %s` first.\n", url, url)
-		return nil
-	}
-
-	out, err := json.MarshalIndent(result, "", "  ")
+	stdout, stderr, err := renderJSONOutput(url, result)
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(out))
+	if stderr != "" {
+		fmt.Fprint(os.Stderr, stderr)
+	}
+	fmt.Print(stdout)
 	return nil
+}
+
+func renderJSONOutput(url string, result *cfrender.JSONResult) (string, string, error) {
+	var stderr string
+	if result != nil && result.Warning != "" {
+		// Partial success should still stream structured data to stdout for agents.
+		stderr = result.Warning + "\n"
+	}
+	if result == nil || result.Data == nil {
+		return fmt.Sprintf("No data extracted from %s. Try a more specific --prompt or inspect the page with `ctx read %s` first.\n", url, url), stderr, nil
+	}
+
+	out, err := json.MarshalIndent(result.Data, "", "  ")
+	if err != nil {
+		return "", stderr, err
+	}
+	return string(out) + "\n", stderr, nil
 }

@@ -18,6 +18,8 @@ ctx json <url> --prompt "List all pricing tiers" --schema @schema.json
 
 Output: JSON to stdout.
 
+If Cloudflare returns a 422 validation error but includes recoverable `rawAiResponse` data, `ctx json` prints that partial JSON to stdout and emits a warning on stderr instead of discarding it.
+
 ## When to use
 
 - Need structured data from a page (pricing tables, API specs, product listings)

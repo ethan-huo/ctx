@@ -60,9 +60,8 @@ func BuildRequestBody(endpoint string, targetURL string, dataBody []byte, flagOv
 
 	// Layer 1.6: Default gotoOptions for endpoints that navigate.
 	// Wait for network idle so SPA/lazy-loaded content has time to render.
-	// Markdown uses the SDK which sets this internally; raw-HTTP endpoints need it here.
 	switch endpoint {
-	case "screenshot", "scrape", "links", "json":
+	case "markdown", "screenshot", "scrape", "links", "json":
 		injectDefaultGotoOptions(merged)
 	}
 

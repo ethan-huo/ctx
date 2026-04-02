@@ -126,6 +126,13 @@ type ScrapeElementHit struct {
 	Height     float64           `json:"height"`
 }
 
+// JSONResult keeps the parsed payload separate from recoverable warnings.
+// The CLI can then decide whether to surface a warning without losing data.
+type JSONResult struct {
+	Data    any
+	Warning string
+}
+
 // Scrape extracts elements from a webpage by CSS selectors.
 // Bypasses the SDK because it mismodels the CF response (results is an array, not a struct).
 func (c *Client) Scrape(ctx context.Context, url string, selectors []string, body []byte) ([]ScrapeResult, error) {
@@ -194,27 +201,70 @@ func (c *Client) Scrape(ctx context.Context, url string, selectors []string, bod
 }
 
 // JSON extracts structured data from a webpage using AI.
-func (c *Client) JSON(ctx context.Context, url string, body []byte) (map[string]any, error) {
-	params := browser_rendering.JsonNewParams{
-		AccountID: cloudflare.F(c.accountID),
-	}
-	var opts []option.RequestOption
+func (c *Client) JSON(ctx context.Context, url string, body []byte) (*JSONResult, error) {
 	if body != nil {
-		opts = append(opts, option.WithRequestBody("application/json", body))
+		// Use caller-provided body as-is after boundary validation in config.BuildRequestBody.
 	} else {
-		params.Body = browser_rendering.JsonNewParamsBody{
-			URL: cloudflare.F(url),
-		}
+		b, _ := json.Marshal(map[string]any{"url": url})
+		body = b
 	}
 
-	result, err := c.inner.BrowserRendering.Json.New(ctx, params, opts...)
+	resp, err := c.cfHTTP(ctx, "POST", "json", body)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare json: %w", err)
 	}
-	if result == nil {
-		return nil, nil
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
 	}
-	return *result, nil
+	result, err := parseJSONHTTPResponse(resp.StatusCode, data)
+	if err != nil {
+		return nil, fmt.Errorf("cloudflare json: %w", err)
+	}
+	return result, nil
+}
+
+type jsonHTTPEnvelope struct {
+	Success       bool            `json:"success"`
+	Result        json.RawMessage `json:"result"`
+	Errors        []jsonHTTPError `json:"errors"`
+	RawAIResponse string          `json:"rawAiResponse"`
+}
+
+type jsonHTTPError struct {
+	Message string `json:"message"`
+}
+
+func parseJSONHTTPResponse(statusCode int, body []byte) (*JSONResult, error) {
+	var envelope jsonHTTPEnvelope
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("HTTP %d: %s", statusCode, body)
+	}
+
+	if statusCode == http.StatusOK {
+		if len(envelope.Result) == 0 || string(envelope.Result) == "null" {
+			return &JSONResult{}, nil
+		}
+		var parsed any
+		if err := json.Unmarshal(envelope.Result, &parsed); err != nil {
+			return nil, fmt.Errorf("invalid success payload: %w", err)
+		}
+		return &JSONResult{Data: parsed}, nil
+	}
+
+	if statusCode == http.StatusUnprocessableEntity && envelope.RawAIResponse != "" {
+		var parsed any
+		if err := json.Unmarshal([]byte(envelope.RawAIResponse), &parsed); err == nil {
+			return &JSONResult{
+				Data:    parsed,
+				Warning: "warning: extraction partially succeeded, results may be incomplete",
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("HTTP %d: %s", statusCode, body)
 }
 
 // --- Crawl (no SDK support, direct HTTP) ---

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -21,6 +22,21 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	w.Close()
 	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	fn()
+
+	w.Close()
+	os.Stderr = old
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 	return buf.String()
@@ -301,5 +317,48 @@ func TestRenderGitHubIssue_ExplicitCommentRange(t *testing.T) {
 	}
 	if !strings.Contains(out, "## Comments 2-3") || !strings.Contains(out, "@b:") || !strings.Contains(out, "@c:") {
 		t.Fatalf("expected selected comment range, got:\n%s", out)
+	}
+}
+
+func TestReadFetch_HTTPFailureFallsBackToCloudflare(t *testing.T) {
+	oldHTTP := readHTTPFetcher
+	oldCF := readCloudflareFetcher
+	t.Cleanup(func() {
+		readHTTPFetcher = oldHTTP
+		readCloudflareFetcher = oldCF
+	})
+
+	readHTTPFetcher = func(url string) (string, error) {
+		return "", fmt.Errorf("403 Forbidden")
+	}
+	readCloudflareFetcher = func(targetURL string, dataBody []byte) (string, error) {
+		if targetURL != "https://docs.example.com" {
+			t.Fatalf("targetURL = %q, want docs URL", targetURL)
+		}
+		if dataBody != nil {
+			t.Fatalf("expected nil dataBody, got %q", dataBody)
+		}
+		return "# Rendered Doc\n", nil
+	}
+
+	var (
+		content string
+		source  string
+		err     error
+	)
+	stderr := captureStderr(t, func() {
+		content, source, err = (&ReadCmd{}).fetch("https://docs.example.com", nil)
+	})
+	if err != nil {
+		t.Fatalf("fetch returned error: %v", err)
+	}
+	if source != "cloudflare" {
+		t.Fatalf("source = %q, want cloudflare", source)
+	}
+	if content != "# Rendered Doc\n" {
+		t.Fatalf("content = %q, want rendered content", content)
+	}
+	if !strings.Contains(stderr, "HTTP fetch failed (403 Forbidden), rendering via Cloudflare") {
+		t.Fatalf("stderr = %q, want fallback diagnostic", stderr)
 	}
 }

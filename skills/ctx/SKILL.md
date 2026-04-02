@@ -122,18 +122,37 @@ Use `--toc` for a compact outline without previews.
 
 ### Fast SPA detection and fallback
 
-`ctx read` returning empty or near-empty content is a strong signal that the page is a **heavy SPA** (JS-rendered, no semantic HTML, hashed CSS classes). When this happens:
+`ctx read` returning empty or near-empty content is a strong signal that the page is JS-heavy, but **do not assume screenshot is the only viable fallback**. Distinguish between two cases:
 
-1. **Skip selector-based approaches** — `ctx scrape -s "main"` and `ctx screenshot --selector` will likely fail too, because the same rendering instability that blocks `ctx read` also means DOM elements are unreliable.
-2. **Go straight to `ctx screenshot`** — the default (no `--selector`) always works because it captures the full viewport. Use the metadata output (`page=N viewport=N screen=X/Y`) to navigate with `--scroll`.
-3. **Do NOT try to probe the DOM** via `addScriptTag` JS injection — on SPAs, scripts often execute before the app renders, producing empty results.
+1. **App/UI SPA with weak semantic DOM**: screenshots are often the fastest fallback.
+2. **Docs/content SPA where JS rendering works but markdown extraction missed the main content block**: keep trying text-first tools before giving up.
+
+Recommended workflow for text-heavy docs SPAs:
+
+1. Try `ctx links <url>` first. If links render correctly, the page likely has a usable post-render DOM even if `ctx read` missed it.
+2. Probe common content containers with `ctx scrape <url> -s "article" -s "main" -s ".markdown-body" -s ".content"`.
+3. If scrape finds the right block, either use `ctx scrape` directly or retry `ctx read` with a targeted wait/extraction body:
+
+```bash
+ctx read -d '{
+  url: "https://example.com/docs",
+  waitForSelector: {selector: ".markdown-body"},
+  gotoOptions: {waitUntil: "networkidle0"}
+}'
+```
+
+4. If the target is structured content (pricing tables, API params, specs), try `ctx json` before falling back to screenshots.
+5. Use `ctx screenshot` as the last resort when the rendered DOM is visually correct but not extractable as text.
 
 Quick decision tree:
 
 ```
-ctx read <url> → got content?
-  YES → use read/scrape/screenshot --selector as needed
-  NO  → heavy SPA → ctx screenshot + --scroll (skip selector attempts)
+ctx read <url> → got useful content?
+  YES → keep using read/scrape/json as needed
+  NO  → try ctx links <url>
+          links worked?
+            YES → docs/content SPA → scrape common selectors, then retry read/json with waits
+            NO  → app-heavy SPA → screenshot fallback
 ```
 
 ### Common compositions

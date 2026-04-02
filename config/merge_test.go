@@ -221,6 +221,22 @@ func TestBuildRequestBody_MarkdownDefaultCleanup(t *testing.T) {
 	}
 }
 
+func TestBuildRequestBody_MarkdownDefaultGotoOptions(t *testing.T) {
+	body, err := BuildRequestBody("markdown", "http://example.com", nil, map[string]any{"url": "http://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := mustUnmarshalBody(t, body)
+	opts, ok := m["gotoOptions"].(map[string]any)
+	if !ok {
+		t.Fatal("markdown endpoint should have default gotoOptions")
+	}
+	if opts["waitUntil"] != "networkidle2" {
+		t.Errorf("waitUntil = %v, want networkidle2", opts["waitUntil"])
+	}
+}
+
 func TestBuildRequestBody_NonMarkdownNoCleanup(t *testing.T) {
 	body, err := BuildRequestBody("screenshot", "http://example.com", nil, map[string]any{"url": "http://example.com"})
 	if err != nil {

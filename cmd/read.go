@@ -59,6 +59,9 @@ type issueCommentSelector struct {
 	Label string
 }
 
+var readHTTPFetcher = fetchHTTP
+var readCloudflareFetcher = fetchCloudflare
+
 func (c *ReadCmd) Run(_ *api.Client) error {
 	dataBody, err := c.ParseBody()
 	if err != nil {
@@ -257,23 +260,22 @@ func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
 		return content, "cloudflare", err
 	}
 
-	// Default: HTTP with markdown negotiation
-	content, err := fetchHTTP(url)
-	if err != nil {
-		return "", "", err
-	}
+	// Default: HTTP with markdown negotiation, CF fallback for any failure.
+	content, httpErr := readHTTPFetcher(url)
 
 	// Good text content that looks complete — use it.
-	if content != "" && !looksIncomplete(content) {
+	if httpErr == nil && content != "" && !looksIncomplete(content) {
 		return content, "http", nil
 	}
 
-	// HTML response or incomplete content — fallback to CF rendering.
-	// Only the incomplete-content case is worth surfacing; HTML fallback is expected.
-	if content != "" {
+	// HTTP failed (anti-bot 403/503, timeout, etc.) or returned
+	// HTML/incomplete content — fallback to CF browser rendering.
+	if httpErr != nil {
+		fmt.Fprintf(os.Stderr, "HTTP fetch failed (%v), rendering via Cloudflare...\n", httpErr)
+	} else if content != "" {
 		fmt.Fprintf(os.Stderr, "Content looks incomplete, rendering via Cloudflare...\n")
 	}
-	content, err = fetchCloudflare(url, nil)
+	content, err := readCloudflareFetcher(url, nil)
 	return content, "cloudflare", err
 }
 
