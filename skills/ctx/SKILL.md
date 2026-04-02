@@ -1,7 +1,7 @@
 ---
 name: ctx
 description: >-
-  Search and read library docs, GitHub-hosted content, read URLs and local files as markdown; navigate long documents; and screenshot, link-scan, scrape, extract structured data from, or crawl websites.
+  Search and read library docs, GitHub-hosted content, read URLs as markdown; navigate long documents; and screenshot, link-scan, scrape, extract structured data from, or crawl websites.
 ---
 
 ## Execution rules
