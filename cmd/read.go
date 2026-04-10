@@ -60,6 +60,8 @@ type issueCommentSelector struct {
 	Label string
 }
 
+const youTubeTranscriptCacheVersion = "youtube-transcript-v2"
+
 var readHTTPFetcher = fetchHTTP
 var readCloudflareFetcher = fetchCloudflare
 
@@ -104,12 +106,7 @@ func (c *ReadCmd) Run(_ *api.Client) error {
 		return c.runGitHubIssue(target, issueTarget)
 	}
 
-	var cacheKey string
-	if dataBody != nil {
-		cacheKey = cache.Key("markdown", canonicalizeURL(target), string(dataBody))
-	} else {
-		cacheKey = cache.Key("markdown", canonicalizeURL(target))
-	}
+	cacheKey := readCacheKey(target, dataBody)
 
 	// Try cache
 	if !c.NoCache {
@@ -217,6 +214,11 @@ func extractDomainFromURL(rawURL string) string {
 
 // fetch dispatches to the right fetcher and returns (content, source, error).
 func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
+	if _, _, ok := parseYouTubeURL(url); ok {
+		content, err := fetchYouTubeTranscript(url)
+		return content, "youtube", err
+	}
+
 	// github://owner/repo@ref/path or github://owner/repo/path
 	if strings.HasPrefix(url, "github://") {
 		path, ref := parseGitHubScheme(strings.TrimPrefix(url, "github://"))
@@ -575,9 +577,32 @@ func countLines(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
+func readCacheKey(target string, dataBody []byte) string {
+	parts := []string{"markdown", canonicalizeURL(target)}
+	if version := readCacheVersion(target); version != "" {
+		// Keep cache versioning at the edge so canonical URLs stay stable while
+		// document-shape changes (like transcript sectioning) don't poison reads.
+		parts = append(parts, version)
+	}
+	if dataBody != nil {
+		parts = append(parts, string(dataBody))
+	}
+	return cache.Key(parts...)
+}
+
+func readCacheVersion(target string) string {
+	if _, _, ok := parseYouTubeURL(target); ok {
+		return youTubeTranscriptCacheVersion
+	}
+	return ""
+}
+
 // canonicalizeURL normalizes GitHub URLs to github:// form for cache key consistency.
 // When a ref is present, the format is github://owner/repo@ref/path.
 func canonicalizeURL(url string) string {
+	if _, canonical, ok := parseYouTubeURL(url); ok {
+		return canonical
+	}
 	if strings.Contains(url, "github.com") {
 		if path, ref, ok := parseGitHubBlobURL(url); ok {
 			return formatGitHubScheme(path, ref)

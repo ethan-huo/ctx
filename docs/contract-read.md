@@ -22,9 +22,10 @@ Design principle: **Agent Experience (AX) first**. An agent calling `ctx read` m
 | 4 | Host is `github.com` AND path contains `/tree/` with a non-empty subpath | **github-tree** | GitHub Contents API (directory listing) |
 | 5 | Host is `github.com` AND path is repo root or `tree/<ref>` root | **github-readme** | GitHub README API |
 | 6 | Host is `github.com` AND path matches `/issues/<id>` | **github-issue** | GitHub Issues API + comments |
-| 7 | Starts with `http://` or `https://`, `-d` body provided | **cf-direct** | Cloudflare Browser Rendering |
-| 8 | Starts with `http://` or `https://` | **http-negotiate** | HTTP with content negotiation → auto CF fallback |
-| 9 | None of the above | **error** | Reject with usage hint |
+| 7 | Host is `youtube.com`, `www.youtube.com`, `m.youtube.com`, or `youtu.be` | **youtube** | `yt-dlp` metadata + transcript fetch |
+| 8 | Starts with `http://` or `https://`, `-d` body provided | **cf-direct** | Cloudflare Browser Rendering |
+| 9 | Starts with `http://` or `https://` | **http-negotiate** | HTTP with content negotiation → auto CF fallback |
+| 10 | None of the above | **error** | Reject with usage hint |
 
 Rules are evaluated top-down. GitHub repo roots are resolved to the repository README instead of falling through to generic HTML rendering.
 
@@ -79,7 +80,24 @@ For simple refs (no `/`): both URL formats work identically.
 - Directory entries end with `/`, symlinks end with `@`, submodules render as `name (submodule)`.
 - Entries are sorted directories first, then files, then other types, each group case-insensitively by name.
 
-### 2.3 github-issue
+### 2.3 youtube
+
+- Accepted inputs:
+  - `https://www.youtube.com/watch?v=<id>`
+  - `https://youtu.be/<id>`
+  - `https://www.youtube.com/shorts/<id>`
+  - `https://www.youtube.com/embed/<id>`
+- Canonical form is always `https://www.youtube.com/watch?v=<id>`. Time offsets like `t=15s` do not affect cache identity.
+- `yt-dlp` is used only to resolve video metadata, chapter data, and available caption URLs.
+- `ctx` fetches the selected `json3` caption track itself and renders the final markdown document.
+- Track selection prefers manual subtitles over automatic captions, and prefers `json3` plus a stable language priority (`en`, `zh`, `ja`, then other original languages, then translated tracks).
+- If the leading cues of a candidate track explicitly announce that the subtitles are AI-translated, that track is demoted behind cleaner candidates from the same video.
+- If the video has chapters, each chapter becomes a section heading. Otherwise transcript cues are grouped into fixed 15-minute sections.
+- If no captions are available, stdout contains video metadata plus a clear unavailable message instead of raw page HTML.
+
+The rendered transcript is intentionally shaped like a markdown document so long videos reuse the existing summary, `--toc`, and `-s` navigation flow. Section headings are time ranges, optionally suffixed with chapter titles.
+
+### 2.4 github-issue
 
 - Accepted inputs:
   - `https://github.com/owner/repo/issues/123`
@@ -96,13 +114,13 @@ For simple refs (no `/`): both URL formats work identically.
 - `--comments all` forces all comments to be rendered.
 - Issue rendering never uses the structural-summary mode. The issue-specific continuation hint replaces it.
 
-### 2.4 cf-direct (with `-d` body)
+### 2.5 cf-direct (with `-d` body)
 
 - Build request body via merge pipeline (settings → site headers → `-d` body → overrides).
 - Call CF Browser Rendering `/markdown` endpoint.
 - **No `looksIncomplete` check.** CF already performed full JS rendering. If the result is still sparse, the issue is the page itself (paywall, anti-bot, empty page).
 
-### 2.5 http-negotiate
+### 2.6 http-negotiate
 
 Two-phase fetch:
 

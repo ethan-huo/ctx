@@ -52,10 +52,12 @@ Auto-detects URL type and fetches accordingly:
 - `https://github.com/.../tree/<ref>/<path>` → GitHub directory listing via GitHub API (`[ctx:github-dir]` header + `ls`-style entries)
 - `https://github.com/owner/repo` → repository README via GitHub API
 - `https://github.com/owner/repo/issues/123` or `github://owner/repo/issues/123` → issue title/body/comments via GitHub API
+- `https://www.youtube.com/watch?v=...`, `https://youtu.be/...`, `https://www.youtube.com/shorts/...` → transcript document via `yt-dlp` + caption fetch
 - `https://...` (markdown/text/JSON/XML/YAML) → direct fetch
 - `https://...` (HTML/SPA) → auto JS rendering fallback via Cloudflare
 
 If `ctx read` returns `[ctx:github-dir]`, treat it as a navigable directory listing. Pick a child entry and re-run `ctx read` against that child path instead of trying to interpret it as prose.
+If `ctx read` returns a long YouTube transcript, use `--toc` and `-s` exactly like markdown. The sections are time ranges or chapters, not prose headings.
 
 GitHub issue reads are smart by default:
 
