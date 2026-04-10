@@ -19,11 +19,12 @@ Design principle: **Agent Experience (AX) first**. An agent calling `ctx read` m
 | 1 | Starts with `file://`, `/`, `./`, `../`, `~/` | **local-file** | Direct filesystem read |
 | 2 | Starts with `github://` | **github-scheme** | GitHub Contents API |
 | 3 | Host is `github.com` AND path contains `/blob/` | **github-blob** | GitHub Contents API (best-effort ref parsing) |
-| 4 | Host is `github.com` AND path is repo root or `tree/<ref>` root | **github-readme** | GitHub README API |
-| 5 | Host is `github.com` AND path matches `/issues/<id>` | **github-issue** | GitHub Issues API + comments |
-| 6 | Starts with `http://` or `https://`, `-d` body provided | **cf-direct** | Cloudflare Browser Rendering |
-| 7 | Starts with `http://` or `https://` | **http-negotiate** | HTTP with content negotiation → auto CF fallback |
-| 8 | None of the above | **error** | Reject with usage hint |
+| 4 | Host is `github.com` AND path contains `/tree/` with a non-empty subpath | **github-tree** | GitHub Contents API (directory listing) |
+| 5 | Host is `github.com` AND path is repo root or `tree/<ref>` root | **github-readme** | GitHub README API |
+| 6 | Host is `github.com` AND path matches `/issues/<id>` | **github-issue** | GitHub Issues API + comments |
+| 7 | Starts with `http://` or `https://`, `-d` body provided | **cf-direct** | Cloudflare Browser Rendering |
+| 8 | Starts with `http://` or `https://` | **http-negotiate** | HTTP with content negotiation → auto CF fallback |
+| 9 | None of the above | **error** | Reject with usage hint |
 
 Rules are evaluated top-down. GitHub repo roots are resolved to the repository README instead of falling through to generic HTML rendering.
 
@@ -39,12 +40,13 @@ Rules are evaluated top-down. GitHub repo roots are resolved to the repository R
 - `--toc` and `-s` still work on local files (heading-based navigation).
 - Error on missing file: `file not found: <path>`
 
-### 2.2 github-scheme / github-blob / github-readme
+### 2.2 github-scheme / github-blob / github-tree / github-readme
 
 **Ref handling:**
 
 - `github://owner/repo@ref/path` — ref is the string between `@` and the next `/`. This is unambiguous because `@` is not valid in GitHub repository names.
 - `https://github.com/owner/repo/blob/<ref>/path` — ref is parsed as the **first path segment** after `/blob/`.
+- `https://github.com/owner/repo/tree/<ref>/path` — ref is parsed as the **first path segment** after `/tree/`, and the remaining path is treated as a directory target.
 - `https://github.com/owner/repo` — resolves to the repository README on the default branch.
 - `https://github.com/owner/repo/tree/<ref>` — resolves to the repository README for that ref.
 
@@ -70,6 +72,12 @@ For simple refs (no `/`): both URL formats work identically.
 - `GET /repos/{owner}/{repo}/readme?ref={ref}` for repo-root README resolution
 - Auth: `GITHUB_TOKEN` env → `GH_TOKEN` env → `gh auth token` CLI fallback → anonymous.
 - **No `looksIncomplete` check.** GitHub returns authoritative content; short files are valid.
+
+**Directory rendering:**
+- If the GitHub Contents API returns an array, the target is a directory, not a file.
+- stdout becomes an `ls`-style listing headed by `[ctx:github-dir] github://owner/repo@ref/path`.
+- Directory entries end with `/`, symlinks end with `@`, submodules render as `name (submodule)`.
+- Entries are sorted directories first, then files, then other types, each group case-insensitively by name.
 
 ### 2.3 github-issue
 
@@ -265,7 +273,7 @@ The old approach was to hint "re-run with `-f`" — this wasted a round-trip. No
 ### 4.2 When NOT to hint
 
 - **local-file**: never. The file is what it is.
-- **github-scheme / github-blob / github-readme / github-issue**: never. GitHub API returns authoritative content.
+- **github-scheme / github-blob / github-tree / github-readme / github-issue**: never. GitHub API returns authoritative content.
 - **After auto-retry**: never for content quality. CF already did full rendering.
 
 ### 4.3 Hint table (all go to stderr)
@@ -288,6 +296,7 @@ Cache key = `SHA256("markdown" + NUL + canonical_url)`
 
 Canonical URL rules:
 - `https://github.com/owner/repo/blob/ref/path` → `github://owner/repo@ref/path`
+- `https://github.com/owner/repo/tree/ref/path` → `github://owner/repo@ref/path`
 - `github://owner/repo@ref/path` → as-is
 - `github://owner/repo/path` (no ref) → as-is (different key from any `@ref` variant)
 - All other URLs → as-is (no normalization)

@@ -212,6 +212,95 @@ func TestReadFetch_GitHubRepoRootUsesReadmeAPI(t *testing.T) {
 	}
 }
 
+func TestReadFetch_GitHubTreeDirectoryUsesContentsAPI(t *testing.T) {
+	oldClient := httpClient
+	t.Cleanup(func() { httpClient = oldClient })
+	t.Setenv("GITHUB_TOKEN", "test-token")
+
+	httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host != "api.github.com" {
+				t.Fatalf("unexpected host: %s", req.URL.Host)
+			}
+			if req.URL.Path != "/repos/TanStack/store/contents/docs" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+			if got := req.URL.Query().Get("ref"); got != "main" {
+				t.Fatalf("ref = %q, want %q", got, "main")
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`[` +
+						`{"name":"guide","type":"dir"},` +
+						`{"name":"README.md","type":"file"},` +
+						`{"name":"api.md","type":"file"}` +
+						`]`,
+				)),
+			}, nil
+		}),
+	}
+
+	content, source, err := (&ReadCmd{}).fetch("https://github.com/TanStack/store/tree/main/docs", nil)
+	if err != nil {
+		t.Fatalf("fetch returned error: %v", err)
+	}
+	if source != "github" {
+		t.Fatalf("source = %q, want github", source)
+	}
+
+	want := strings.Join([]string{
+		"[ctx:github-dir] github://TanStack/store@main/docs",
+		"guide/",
+		"api.md",
+		"README.md",
+	}, "\n")
+	if content != want {
+		t.Fatalf("content = %q, want %q", content, want)
+	}
+}
+
+func TestFetchGitHub_GitHubSchemeDirectoryRendersListing(t *testing.T) {
+	oldClient := httpClient
+	t.Cleanup(func() { httpClient = oldClient })
+	t.Setenv("GITHUB_TOKEN", "test-token")
+
+	httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/repos/o/r/contents/docs" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`[` +
+						`{"name":"subdir","type":"dir"},` +
+						`{"name":"file.md","type":"file"},` +
+						`{"name":"link","type":"symlink"}` +
+						`]`,
+				)),
+			}, nil
+		}),
+	}
+
+	content, err := fetchGitHub("o/r/docs", "")
+	if err != nil {
+		t.Fatalf("fetchGitHub returned error: %v", err)
+	}
+
+	want := strings.Join([]string{
+		"[ctx:github-dir] github://o/r/docs",
+		"subdir/",
+		"file.md",
+		"link@",
+	}, "\n")
+	if content != want {
+		t.Fatalf("content = %q, want %q", content, want)
+	}
+}
+
 func TestReadFetch_GitHubIssueUsesIssueAPIs(t *testing.T) {
 	oldClient := httpClient
 	t.Cleanup(func() { httpClient = oldClient })

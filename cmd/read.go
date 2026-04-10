@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -231,6 +232,20 @@ func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
 				// The 404 might be a real not-found, or it might be a slash-ref
 				// misparsing (e.g. "feature/auth" parsed as ref="feature").
 				// Return the real error; add a stderr note about possible ambiguity.
+				parts := strings.SplitN(path, "/", 3)
+				if len(parts) >= 3 {
+					fmt.Fprintf(os.Stderr,
+						"Note: if the branch name contains '/', ref %q may have been parsed incorrectly.\n"+
+							"Try: ctx read github://%s/%s@<ref>/%s\n",
+						ref, parts[0], parts[1], parts[2])
+				}
+			}
+			return content, "github", err
+		}
+		if path, ref, ok := parseGitHubTreeURL(url); ok {
+			content, err := fetchGitHub(path, ref)
+			if err != nil && strings.Contains(err.Error(), "GitHub API 404") {
+				// tree/<ref>/path has the same slash-ref ambiguity as blob/<ref>/path.
 				parts := strings.SplitN(path, "/", 3)
 				if len(parts) >= 3 {
 					fmt.Fprintf(os.Stderr,
@@ -567,6 +582,9 @@ func canonicalizeURL(url string) string {
 		if path, ref, ok := parseGitHubBlobURL(url); ok {
 			return formatGitHubScheme(path, ref)
 		}
+		if path, ref, ok := parseGitHubTreeURL(url); ok {
+			return formatGitHubScheme(path, ref)
+		}
 		if issueTarget, ok, err := parseGitHubIssueTarget(url); err == nil && ok {
 			return issueTarget.Canonical
 		}
@@ -622,7 +640,7 @@ func fetchGitHub(path, ref string) (string, error) {
 	if ref != "" {
 		apiURL += "?ref=" + ref
 	}
-	return fetchGitHubContent(apiURL)
+	return fetchGitHubContent(apiURL, path, ref)
 }
 
 func fetchGitHubReadme(owner, repo, ref string) (string, error) {
@@ -630,21 +648,32 @@ func fetchGitHubReadme(owner, repo, ref string) (string, error) {
 	if ref != "" {
 		apiURL += "?ref=" + url.QueryEscape(ref)
 	}
-	return fetchGitHubContent(apiURL)
+	return fetchGitHubContent(apiURL, owner+"/"+repo+"/README.md", ref)
 }
 
-func fetchGitHubContent(apiURL string) (string, error) {
+func fetchGitHubContent(apiURL, path, ref string) (string, error) {
 	resp, err := doGitHubAPIRequest(apiURL)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+
+	trimmed := strings.TrimSpace(string(body))
+	if strings.HasPrefix(trimmed, "[") {
+		var entries []gitHubDirectoryEntry
+		if err := json.Unmarshal(body, &entries); err != nil {
+			return "", err
+		}
+		return renderGitHubDirectory(path, ref, entries), nil
+	}
+
+	var result gitHubFileContent
+	if err := json.Unmarshal(body, &result); err != nil {
 		return "", err
 	}
 
@@ -659,6 +688,61 @@ func fetchGitHubContent(apiURL string) (string, error) {
 	}
 
 	return result.Content, nil
+}
+
+type gitHubFileContent struct {
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
+
+type gitHubDirectoryEntry struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+func renderGitHubDirectory(path, ref string, entries []gitHubDirectoryEntry) string {
+	sort.Slice(entries, func(i, j int) bool {
+		left := directoryEntrySortKey(entries[i])
+		right := directoryEntrySortKey(entries[j])
+		if left != right {
+			return left < right
+		}
+		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	})
+
+	var b strings.Builder
+	b.WriteString("[ctx:github-dir] ")
+	b.WriteString(formatGitHubScheme(path, ref))
+	b.WriteByte('\n')
+	for _, entry := range entries {
+		b.WriteString(formatGitHubDirectoryEntry(entry))
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func directoryEntrySortKey(entry gitHubDirectoryEntry) int {
+	switch entry.Type {
+	case "dir":
+		return 0
+	case "file":
+		return 1
+	default:
+		return 2
+	}
+}
+
+func formatGitHubDirectoryEntry(entry gitHubDirectoryEntry) string {
+	switch entry.Type {
+	case "dir":
+		return entry.Name + "/"
+	case "symlink":
+		return entry.Name + "@"
+	case "submodule":
+		return entry.Name + " (submodule)"
+	default:
+		return entry.Name
+	}
 }
 
 func fetchGitHubJSON(apiURL string, dest any) error {
@@ -834,6 +918,28 @@ func parseGitHubBlobURL(rawURL string) (path string, ref string, ok bool) {
 		rest = rest[:idx]
 	}
 	return repo + "/" + rest, ref, true
+}
+
+func parseGitHubTreeURL(rawURL string) (path string, ref string, ok bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host != "github.com" {
+		return "", "", false
+	}
+
+	parts := strings.Split(strings.Trim(strings.TrimSpace(u.Path), "/"), "/")
+	if len(parts) < 5 || parts[2] != "tree" {
+		return "", "", false
+	}
+	if parts[0] == "" || parts[1] == "" || parts[3] == "" {
+		return "", "", false
+	}
+
+	subpath := strings.Join(parts[4:], "/")
+	if subpath == "" {
+		return "", "", false
+	}
+
+	return parts[0] + "/" + parts[1] + "/" + subpath, parts[3], true
 }
 
 func parseGitHubRepoReadmeURL(rawURL string) (owner string, repo string, ref string, ok bool) {

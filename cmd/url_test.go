@@ -105,6 +105,59 @@ func TestParseGitHubBlobURL(t *testing.T) {
 	}
 }
 
+func TestParseGitHubTreeURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantPath string
+		wantRef  string
+		wantOK   bool
+	}{
+		{
+			name:     "directory under explicit ref",
+			input:    "https://github.com/TanStack/store/tree/main/docs",
+			wantPath: "TanStack/store/docs",
+			wantRef:  "main",
+			wantOK:   true,
+		},
+		{
+			name:     "deep directory strips fragment and query",
+			input:    "https://github.com/o/r/tree/release/docs/api?plain=1#top",
+			wantPath: "o/r/docs/api",
+			wantRef:  "release",
+			wantOK:   true,
+		},
+		{
+			name:   "tree root stays with readme parser",
+			input:  "https://github.com/o/r/tree/main",
+			wantOK: false,
+		},
+		{
+			name:   "blob url is not tree",
+			input:  "https://github.com/o/r/blob/main/file.go",
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, ref, ok := parseGitHubTreeURL(tt.input)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if path != tt.wantPath {
+				t.Errorf("path = %q, want %q", path, tt.wantPath)
+			}
+			if ref != tt.wantRef {
+				t.Errorf("ref = %q, want %q", ref, tt.wantRef)
+			}
+		})
+	}
+}
+
 func TestParseGitHubRepoReadmeURL(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -292,6 +345,10 @@ func TestCanonicalizeURL(t *testing.T) {
 			"github://owner/repo@main/README.md",
 		},
 		{
+			"https://github.com/owner/repo/tree/main/docs",
+			"github://owner/repo@main/docs",
+		},
+		{
 			"https://github.com/owner/repo/issues/12",
 			"github://owner/repo/issues/12",
 		},
@@ -392,6 +449,10 @@ func TestNormalizeURL(t *testing.T) {
 		{
 			"https://github.com/owner/repo",
 			"github://owner/repo/README.md",
+		},
+		{
+			"https://github.com/owner/repo/tree/main/docs",
+			"github://owner/repo@main/docs",
 		},
 		{
 			"https://github.com/owner/repo/issues/12",
