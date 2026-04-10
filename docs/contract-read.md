@@ -183,7 +183,7 @@ An agent sees stdout on success. A human watching the terminal also sees stderr.
 **Long documents (> threshold)**: Replace content with a **structural summary** — a compressed view of the entire document that preserves all headings with line counts and gives a proportional preview of each section's content:
 
 ```
-[ctx:summary] 5000 lines, 12 sections. Read sections: ctx read <url> -s <number>
+[ctx:summary] 5000 lines, 12 sections. Read sections: ctx read <url> -s <number> (e.g. -s 10 or -s 10-20)
 Full content: ~/.cache/ctx/abc123.md
 
 # 1 Getting Started (45 lines)
@@ -230,7 +230,7 @@ and element-specific screenshots via CSS selectors.
 - Agent sees the **complete document structure**, not a position-biased prefix.
 - Each section has enough preview to judge relevance (topic sentences + size).
 - Line counts let the agent estimate information density per section.
-- Agent is forced to use `-s <number>` to read specific sections — intentional, precise reading.
+- Agent is forced to use `-s <number>` to read specific sections or ranges — intentional, precise reading.
 - No content is privileged by position. Section 2.2 gets the same treatment as Section 1.1.
 
 **The `[ctx:summary]` marker**: First line of output. Machine-readable tag that unambiguously signals this is a summary, not the full document. Contains total line count, section count, and the `-s` usage hint. No additional footer warning is needed — the marker is sufficient.
@@ -522,7 +522,7 @@ NOTE:   looksIncomplete triggered auto-retry via CF. No manual -f needed.
 
 ```
 INPUT:  ctx read https://huge-docs.example.com/api  (5000 lines, 12 sections)
-STDOUT: [ctx:summary] 5000 lines, 12 sections. Read sections: ctx read https://huge-docs.example.com/api -s <number>
+STDOUT: [ctx:summary] 5000 lines, 12 sections. Read sections: ctx read https://huge-docs.example.com/api -s <number> (e.g. -s 10 or -s 10-20)
         Full content: ~/.cache/ctx/{hash}.md
 
         # 1 Getting Started (45 lines)

@@ -34,7 +34,7 @@ Pass flags for options.
 	if !strings.Contains(lines[0], "3 sections") {
 		t.Errorf("expected 3 sections in header, got: %q", lines[0])
 	}
-	if !strings.Contains(lines[0], "ctx read https://example.com -s <number>") {
+	if !strings.Contains(lines[0], "ctx read https://example.com -s <number> (e.g. -s 10 or -s 10-20)") {
 		t.Errorf("expected read command in header, got: %q", lines[0])
 	}
 

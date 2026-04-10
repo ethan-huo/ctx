@@ -21,7 +21,7 @@ func FormatSummary(source []byte, headings []Heading, url, cachePath string) str
 	totalLines := strings.Count(string(source), "\n") + 1
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "[ctx:summary] %d lines, %d sections. Read sections: ctx read %s -s <number>\n", totalLines, len(headings), url)
+	fmt.Fprintf(&b, "[ctx:summary] %d lines, %d sections. Read sections: ctx read %s -s <number> (e.g. -s 10 or -s 10-20)\n", totalLines, len(headings), url)
 	fmt.Fprintf(&b, "Full content: %s\n", cachePath)
 
 	for _, h := range headings {

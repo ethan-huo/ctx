@@ -89,7 +89,7 @@ Other useful `-d` parameters: `cookies`, `waitForSelector`, `gotoOptions.waitUnt
 Documents over 2000 lines produce a **structural summary** instead of the full content. The output starts with `[ctx:summary]` and shows every section heading with line counts and a preview:
 
 ```
-[ctx:summary] 5000 lines, 12 sections. Read sections: ctx read <url> -s <number>
+[ctx:summary] 5000 lines, 12 sections. Read sections: ctx read <url> -s <number> (e.g. -s 10 or -s 10-20)
 Full content: ~/.cache/ctx/{hash}.md
 
 # 1 Getting Started (45 lines)
