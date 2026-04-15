@@ -25,19 +25,61 @@ When using `-d`, selectors go in the body as `elements` array — no `-s` flags 
 
 ## Output format
 
-Default JSON:
+Default stdout is pretty JSON:
 ```json
 [
   {
     "selector": "h1",
     "results": [
-      {"text": "API Reference", "html": "<h1>API Reference</h1>", "width": 800, "height": 40}
+      {
+        "text": "API Reference",
+        "html": "<h1>API Reference</h1>",
+        "attributes": {
+          "id": "api-reference"
+        },
+        "width": 800,
+        "height": 40
+      }
     ]
   }
 ]
 ```
 
-With `--text-only`: one text value per line.
+Structure:
+
+- Top level: array of selector groups, one object per requested selector
+- `.[] .selector`: the CSS selector that produced this group
+- `.[] .results`: matched elements for that selector
+- `.[] .results[] .text`: visible text content
+- `.[] .results[] .html`: matched element HTML; cleaned by default, raw with `--raw`
+- `.[] .results[] .attributes`: object of element attributes, omitted when empty
+- `.[] .results[] .width` / `.height`: rendered element dimensions in pixels
+
+With `--text-only`, stdout is not JSON: it prints one text value per line.
+
+If no elements match, stdout is a human-readable diagnostic rather than JSON. When scripting, prefer selectors that are expected to match or guard JSON parsing accordingly.
+
+## jq examples
+
+Print every matched text value:
+
+```bash
+ctx scrape <url> -s "h1" -s "table.api-params" | jq -r '.[].results[].text'
+```
+
+Print only the text for a specific selector:
+
+```bash
+ctx scrape <url> -s "h1" -s "table.api-params" \
+  | jq -r '.[] | select(.selector == "table.api-params") | .results[].text'
+```
+
+Extract links from matched anchors:
+
+```bash
+ctx scrape <url> -s "main a" \
+  | jq -r '.[].results[] | select(.attributes.href) | [.text, .attributes.href] | @tsv'
+```
 
 ## Full API control via -d
 
