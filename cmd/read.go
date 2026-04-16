@@ -280,13 +280,15 @@ func (c *ReadCmd) fetch(url string, dataBody []byte) (string, string, error) {
 	// Default: HTTP with markdown negotiation, CF fallback for any failure.
 	content, httpErr := readHTTPFetcher(url)
 
-	// Good text content that looks complete — use it.
+	// Directly readable HTTP content is authoritative. Short files such as
+	// llms.txt or robots.txt are valid documents; only explicit JS placeholders
+	// should fall through to browser rendering.
 	if httpErr == nil && content != "" && !looksIncomplete(content) {
 		return content, "http", nil
 	}
 
 	// HTTP failed (anti-bot 403/503, timeout, etc.) or returned
-	// HTML/incomplete content — fallback to CF browser rendering.
+	// HTML/JS-placeholder content — fallback to CF browser rendering.
 	if httpErr != nil {
 		fmt.Fprintf(os.Stderr, "HTTP fetch failed (%v), rendering via Cloudflare...\n", httpErr)
 	} else if content != "" {
@@ -887,7 +889,7 @@ func localPath(url string) (string, bool) {
 
 func looksIncomplete(content string) bool {
 	trimmed := strings.TrimSpace(content)
-	if len(trimmed) < 500 {
+	if trimmed == "" {
 		return true
 	}
 	lower := strings.ToLower(trimmed)

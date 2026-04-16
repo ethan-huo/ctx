@@ -137,15 +137,16 @@ Two-phase fetch:
   - `text/html`, `application/xhtml+xml` — needs browser rendering
   - Any other `application/*` type not in the accept list above (binary, unknown)
 - **Source = `http`** for all Phase 1 accepted responses.
-- On HTTP error (non-2xx): return error immediately. Do NOT fall through to Phase 2.
+- On HTTP probe error (non-2xx, timeout, anti-bot block): fall through to Phase 2. Many documentation sites block plain HTTP clients but render correctly through the browser path.
 
-**Phase 2: Cloudflare fallback** (triggered by HTML response OR `looksIncomplete` content)
-- Log `Content looks incomplete, rendering via Cloudflare...` to **stderr** only when Phase 1 returned text that looks incomplete.
+**Phase 2: Cloudflare fallback** (triggered by HTTP probe error, HTML/unknown response, OR explicit JS-placeholder content)
+- Log `HTTP fetch failed ({error}), rendering via Cloudflare...` to **stderr** only when Phase 1 failed before returning directly usable content.
+- Log `Content looks incomplete, rendering via Cloudflare...` to **stderr** only when Phase 1 returned text with an explicit JS-required/loading signal.
 - Build request body via merge pipeline.
 - Call CF Browser Rendering `/markdown` endpoint. **Source = `cloudflare`**.
 - On CF credential error: return actionable error.
 
-**`looksIncomplete` auto-retries with CF.** If Phase 1 returns text content that looks incomplete (< 500 chars, or contains JS-required signals like "enable javascript", "loading..."), Phase 2 kicks in automatically. No manual `-f` flag needed.
+**`looksIncomplete` auto-retries with CF.** If Phase 1 returns text content with JS-required signals like "enable javascript", "loading...", or "this page requires javascript", Phase 2 kicks in automatically. Short plain-text documents are valid and must return directly.
 
 ---
 
@@ -284,7 +285,7 @@ This is enforced by:
 ### 4.1 Core principle: auto-recover, don't hint
 
 The old approach was to hint "re-run with `-f`" — this wasted a round-trip. Now:
-- **`looksIncomplete` content**: auto-retries with CF rendering (no hint needed).
+- **JS-placeholder HTTP text**: auto-retries with CF rendering (no hint needed).
 - **HTML response**: auto-falls back to CF rendering (no hint needed).
 - **Empty content after CF**: hint with possible causes (stderr). No actionable retry exists.
 
@@ -341,7 +342,7 @@ Error messages must be:
 | Local file not found | `file not found: {path}` |
 | GitHub API 404 | `GitHub API 404 for {owner}/{repo}/{path}: not found. Check the repository and path.` |
 | GitHub API 403 (rate limit) | `GitHub API rate limited. Set GITHUB_TOKEN or run: gh auth login` |
-| HTTP non-2xx | `HTTP {status} for {url}` |
+| HTTP probe error | stderr diagnostic: `HTTP fetch failed ({error}), rendering via Cloudflare...`; final errors come from the CF fallback path |
 | CF not configured | `cloudflare not configured — run: ctx auth login cloudflare` |
 | CF API error | `cloudflare rendering failed for {url}: {error}` |
 | Invalid section expr | `invalid section expression "{expr}": {detail} — use --toc to see available sections` |
@@ -372,9 +373,11 @@ Input
   │                                                           │
   ├─ cf-direct (-d) ─── BuildRequestBody → CF /markdown ─────┤
   │                                                           │
-  └─ http-negotiate ─── fetchHTTP ──┬─ complete text ─────────┤
+  └─ http-negotiate ─── fetchHTTP ──┬─ direct text ───────────┤
                                     │                         │
-                                    └─ html/incomplete ── CF ──┤
+                                    ├─ http error ───────── CF ┤
+                                    │                         │
+                                    └─ html/js-placeholder ─ CF┤
                                                               │
                                               ┌───────────────┘
                                               │
@@ -385,11 +388,11 @@ Input
                               │               │                │
                          source=http    source=github    source=cloudflare
                               │               │                │
-                     looksIncomplete?     (no check)      (no check)
-                       empty check?                      empty check?
+                         empty check?      (no check)      (no check)
                               │               │                │
                        stderr hint       (no hint)       stderr hint
-                              │               │           (if empty)
+                         (if empty)                      (if empty)
+                              │               │                │
                               │               │                │
                               └───────┬───────┘────────────────┘
                                       │
@@ -508,7 +511,7 @@ EXIT:   0
 NOTE:   looksIncomplete is NOT checked (source=cloudflare)
 ```
 
-### 9.4 Incomplete HTTP content → auto CF retry
+### 9.4 JS-placeholder HTTP content → auto CF retry
 
 ```
 INPUT:  ctx read https://example.com/page  (returns text/plain, 200 chars with "loading..." signal)
@@ -516,6 +519,16 @@ STDOUT: <CF-rendered content>
 STDERR: Content looks incomplete, rendering via Cloudflare...
 EXIT:   0
 NOTE:   looksIncomplete triggered auto-retry via CF. No manual -f needed.
+```
+
+### 9.5 HTTP probe blocked → auto CF retry
+
+```
+INPUT:  ctx read https://protected.example.com/docs  (plain HTTP probe returns 403)
+STDOUT: <CF-rendered content>
+STDERR: HTTP fetch failed (HTTP 403 for https://protected.example.com/docs), rendering via Cloudflare...
+EXIT:   0
+NOTE:   Probe failure is not terminal if browser rendering succeeds.
 ```
 
 ### 9.6 Long document → structural summary

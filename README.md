@@ -97,7 +97,7 @@ ctx site ls
 | `https://github.com/owner/repo` | Auto-resolved to repository README |
 | `https://github.com/owner/repo/issues/123` | Auto-resolved to issue title/body/comments |
 | `https://www.youtube.com/watch?v=...`, `youtu.be/...`, `.../shorts/...` | Transcript document via `yt-dlp` + caption fetch |
-| Any `https://` (text/markdown/JSON/XML) | Direct fetch |
+| Any `https://` (text/plain/markdown/JSON/XML) | Direct fetch |
 | Any `https://` (HTML/SPA) | Cloudflare Browser Rendering fallback |
 
 Issue reads auto-expand comments until a line budget is reached, then append a continuation hint like `ctx read github://owner/repo/issues/123 --comments 9-20`. Use `--comments 1-3` or `--comments all` to override.

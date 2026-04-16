@@ -417,8 +417,12 @@ func TestLocalPath(t *testing.T) {
 
 func TestLooksIncomplete(t *testing.T) {
 	short := "Short content."
-	if !looksIncomplete(short) {
-		t.Error("short content should look incomplete")
+	if looksIncomplete(short) {
+		t.Error("short content without JS signals should not look incomplete")
+	}
+
+	if !looksIncomplete("   ") {
+		t.Error("empty content should look incomplete")
 	}
 
 	jsRequired := make([]byte, 600)

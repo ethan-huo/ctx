@@ -469,3 +469,31 @@ func TestReadFetch_HTTPFailureFallsBackToCloudflare(t *testing.T) {
 		t.Fatalf("stderr = %q, want fallback diagnostic", stderr)
 	}
 }
+
+func TestReadFetch_ShortHTTPTextDoesNotFallBackToCloudflare(t *testing.T) {
+	oldHTTP := readHTTPFetcher
+	oldCF := readCloudflareFetcher
+	t.Cleanup(func() {
+		readHTTPFetcher = oldHTTP
+		readCloudflareFetcher = oldCF
+	})
+
+	readHTTPFetcher = func(url string) (string, error) {
+		return "Short plain text.\n", nil
+	}
+	readCloudflareFetcher = func(targetURL string, dataBody []byte) (string, error) {
+		t.Fatalf("Cloudflare fallback should not be called for direct HTTP text")
+		return "", nil
+	}
+
+	content, source, err := (&ReadCmd{}).fetch("https://example.com/llms.txt", nil)
+	if err != nil {
+		t.Fatalf("fetch returned error: %v", err)
+	}
+	if source != "http" {
+		t.Fatalf("source = %q, want http", source)
+	}
+	if content != "Short plain text.\n" {
+		t.Fatalf("content = %q, want direct HTTP text", content)
+	}
+}
